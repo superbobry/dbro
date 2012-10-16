@@ -52,16 +52,17 @@ tableSchema = list1 $ do
     name <- columnName
     void $ skipSpace
     t    <- columnType
-    return $! (name, t)
+    return $ (name, t)
 
 columnName :: Parser ColumnName
 columnName = word
 
 columnType :: Parser ColumnType
-columnType = choice [ stringCI "int" *> pure IntegerColumn
-                    , stringCI "double" *> pure DoubleColumn
-                    , VarcharColumn <$> (stringCI "varchar" *> decimal)
-                    ]
+columnType =
+    choice [ stringCI "int" *> pure IntegerColumn
+           , stringCI "double" *> pure DoubleColumn
+           , VarcharColumn <$> (stringCI "varchar" *> skipSpace *> decimal)
+           ]
 
 columnValue :: Parser ColumnValue
 columnValue = choice [ IntegerValue <$> signed decimal
