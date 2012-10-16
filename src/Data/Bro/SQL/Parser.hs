@@ -25,23 +25,19 @@ statement = choice [selectAll, createTable, insertInto]
             <* char ';'
   where
     createTable = do
-        void $ stringCI "create" <* skipSpace
-        void $ stringCI "table" <* skipSpace
+        tokens ["create", "table"]
         CreateTable <$> tableName <*> tableSchema
 
     insertInto = do
-        void $ stringCI "insert" <* skipSpace
-        void $ stringCI "into" <* skipSpace
+        tokens ["insert", "into"]
         table <- takeWhile isAlphaNum
         columns <- list1 columnName
-        void $ stringCI "values"
+        token "values"
         values <- list1 columnValue
         return $! InsertInto table (zip columns values)
 
     selectAll = do
-        void $ stringCI "select" <* skipSpace
-        void $ char '*' <* skipSpace
-        void $ stringCI "from" <* skipSpace
+        tokens ["select", "*", "from"]
         SelectAll <$> tableName
 
 tableName :: Parser TableName
@@ -61,7 +57,7 @@ columnType :: Parser ColumnType
 columnType =
     choice [ stringCI "int" *> pure IntegerColumn
            , stringCI "double" *> pure DoubleColumn
-           , VarcharColumn <$> (stringCI "varchar" *> skipSpace *> decimal)
+           , VarcharColumn <$> (token "varchar" *> decimal)
            ]
 
 columnValue :: Parser ColumnValue
@@ -72,10 +68,21 @@ columnValue = choice [ IntegerValue <$> signed decimal
 
 word :: Parser Text
 word = takeWhile isAlphaNum
+{-# INLINE word #-}
+
+token :: Text -> Parser ()
+token s = void $ stringCI s *> skipSpace
+{-# INLINE token #-}
+
+tokens :: [Text] -> Parser ()
+tokens = mapM_ token
+{-# INLINE tokens #-}
 
 between :: Char -> Char -> Parser a -> Parser a
 between open close p =
     (char open <* skipSpace) *> p <* (skipSpace *> char close)
+{-# INLINE between #-}
 
 list1 :: Parser a -> Parser [a]
 list1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
+{-# INLINE list1 #-}
