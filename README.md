@@ -12,10 +12,12 @@ $ cabal-dev configure -fdebug
 $ cabal-dev build
 ```
 
-After compilation `dbro` binary will be available under `dist/build/dbro`:
+After compilation, `dbro` binary will be available under `dist/build/dbro`:
 
 ```bash
 $ dist/build/dbro/dbro
 select * from foo;
 Done "" SelectAll "foo"
 ```
+
+Please, follow the [**style guide**](https://github.com/tibbe/haskell-style-guide)!
