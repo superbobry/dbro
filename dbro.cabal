@@ -1,0 +1,18 @@
+name:       dbro
+version:    0.1
+license:    PublicDomain
+author:     (write your names here)
+
+stability:  Experimental
+category:   Databases
+build-type: Simple
+synopsis:   Useless relational database in Haskell.
+
+cabal-version: >= 1.2
+
+executable dbro
+  hs-source-dirs: src, bin
+  main-is:        Main.hs
+  ghc-options:    -Wall -fwarn-unused-imports -fno-warn-orphans
+
+  build-depends:  base >= 4.3.1
