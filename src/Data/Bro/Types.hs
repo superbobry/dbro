@@ -1,35 +1,36 @@
-{-# LANGUAGE CPP, ExistentialQuantification, StandaloneDeriving #-}
+{-# LANGUAGE CPP, StandaloneDeriving #-}
 
 module Data.Bro.Types
   ( TableName
+  , TableSchema
   , ColumnName
   , ColumnType(..)
+  , ColumnValue(..)
   , Statement(..)
-  , BroValue
   ) where
 
 import Data.Word (Word8)
 
 import Data.Text (Text)
 
-type TableName = Text
-
 type ColumnName = Text
 data ColumnType = IntegerColumn
                 | DoubleColumn
                 | VarcharColumn Word8
 
-#ifdef DEBUG
-class Show a => BroValue a where
-#else
-class BroValue a where
-#endif
+data ColumnValue = IntegerValue Int
+                 | DoubleValue Double
+                 | VarcharValue Text
 
-data Statement = CreateTable TableName [(ColumnName, ColumnType)]
-               | forall a. BroValue a => InsertInto TableName [(ColumnName, a)]
+type TableName = Text
+type TableSchema = [(ColumnName, ColumnType)]
+
+data Statement = CreateTable TableName TableSchema
+               | InsertInto TableName [(ColumnName, ColumnValue)]
                | SelectAll TableName
 
 #ifdef DEBUG
 deriving instance Show ColumnType
+deriving instance Show ColumnValue
 deriving instance Show Statement
 #endif
