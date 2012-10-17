@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Data.Bro.SQL.Parser
+module Data.Bro.Parser
   ( statement
   ) where
 

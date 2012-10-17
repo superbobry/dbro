@@ -34,7 +34,7 @@ library
 
   exposed-modules:
     Data.Bro.Types
-    Data.Bro.SQL.Parser
+    Data.Bro.Parser
 
   build-depends:  base,
                   attoparsec == 0.10.2.*,
