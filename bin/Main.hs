@@ -1,13 +1,19 @@
+{-# LANGUAGE CPP #-}
+
 module Main where
 
 import Control.Monad (forever)
 import Prelude hiding (getLine)
 
-import Data.Attoparsec.Text (parseTest)
+#ifdef DEBUG
+import Data.Attoparsec.Text.Parsec (parseOnly)
+#else
+import Data.Attoparsec.Text (parseOnly)
+#endif
 import Data.Text.IO (getLine)
 
 import Data.Bro.SQL.Parser (statement)
 
 main :: IO ()
 main = forever $
-    parseTest statement =<< getLine
+    print . parseOnly statement =<< getLine

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Data.Bro.SQL.Parser
@@ -11,13 +12,44 @@ import Data.Char (isAlphaNum)
 import Prelude hiding (takeWhile)
 
 import Data.Text (Text)
-import Data.Attoparsec.Text (Parser, choice, takeWhile, sepBy1,
-                             signed, decimal, double, char, stringCI,
-                             skipSpace)
+#ifdef DEBUG
+import Data.Functor ((<$))
+import Control.Applicative (empty)
+
+import Data.Attoparsec.Text.Parsec (Parser, choice, takeWhile, sepBy1,
+                                    char, stringCI, skipSpace)
+import Text.Parsec.Prim (getInput, setInput)
+import qualified Data.Text.Read as TR
+#else
+import Data.Attoparsec.Text (Parser, choice, takeWhile, sepBy1, signed, double,
+                            decimal, char, stringCI, skipSpace)
+#endif
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
                        Statement(..))
+
+signedDecimal :: Integral a => Parser a
+signedDouble :: Parser Double
+
+#ifdef DEBUG
+getSetParser :: (Text -> Either String (a, Text)) -> Parser a
+getSetParser f = do
+    s <- getInput
+    case f s of
+        Right (n, s') -> n <$ setInput s'
+        Left _         -> empty
+
+decimal :: Integral a => Parser a
+decimal = getSetParser TR.decimal
+
+signedDecimal = getSetParser $ TR.signed TR.decimal
+signedDouble = getSetParser $ TR.signed TR.double
+
+#else
+signedDecimal = signed decimal
+signedDouble = signed double
+#endif
 
 statement :: Parser Statement
 statement = choice [selectAll, createTable, insertInto]
@@ -61,8 +93,8 @@ columnType =
            ]
 
 columnValue :: Parser ColumnValue
-columnValue = choice [ IntegerValue <$> signed decimal
-                     , DoubleValue <$> signed double
+columnValue = choice [ IntegerValue <$> signedDecimal
+                     , DoubleValue <$> signedDouble
                      , VarcharValue <$> word
                      ]
 
