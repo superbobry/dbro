@@ -1,5 +1,4 @@
-dbro
-====
+# dbro [![Build Status](https://secure.travis-ci.org/superbobry/dbro.png)](http://travis-ci.org/superbobry/dbro)#
 
 Development
 -----------
