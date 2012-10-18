@@ -8,7 +8,8 @@ Make sure you have **at least** GHC 7.4.2, then just do the usual
 [cabal-dev](http://hackage.haskell.org/package/cabal-dev) routine:
 
 ```bash
-$ cabal-dev configure -fdebug
+$ cabal-dev install-deps --enable-tests
+$ cabal-dev configure -fdebug --enable-tests
 $ cabal-dev build
 ```
 

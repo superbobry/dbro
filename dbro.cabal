@@ -20,10 +20,10 @@ executable dbro
 
   main-is:        Main.hs
 
-  build-depends:  base,
-                  attoparsec == 0.10.2.*,
-                  text == 0.11.2.*,
-                  dbro
+  build-depends:    base
+                  , attoparsec == 0.10.2.*
+                  , text == 0.11.2.*
+                  , dbro
 
 library
   hs-source-dirs: src
@@ -36,6 +36,25 @@ library
     Data.Bro.Types
     Data.Bro.Parser
 
-  build-depends:  base,
-                  attoparsec == 0.10.2.*,
-                  text == 0.11.2.*
+  build-depends:    base
+                  , attoparsec == 0.10.2.*
+                  , text == 0.11.2.*
+
+test-suite dbro-tests
+  hs-source-dirs: tests
+  ghc-options:    -Wall -fwarn-unused-imports -fno-warn-orphans
+
+  type:           exitcode-stdio-1.0
+  main-is:        Tests.hs
+
+  build-depends:    base
+                  , attoparsec == 0.10.2.*
+                  , text == 0.11.2.*
+                  , text-format == 0.3.*
+                  , test-framework             == 0.6.*
+                  , test-framework-quickcheck2 == 0.2.*
+                  , test-framework-hunit       == 0.2.*
+                  , HUnit                      == 1.2.*
+                  , QuickCheck                 == 2.4.*
+                  , quickcheck-instances       == 0.3.*
+                  , dbro
