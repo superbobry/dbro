@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Data.Bro.Parser.Tests
   ( tests
@@ -16,7 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 
 import Data.Bro.Parser (statement)
-import Data.Bro.Types (ColumnType(..), ColumnValue(..),
+import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..),
                        TableSchema, Statement(..))
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
@@ -26,6 +27,9 @@ symbol = T.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'])
 
 instance Arbitrary T.Text where
     arbitrary = symbol  -- restrict 'Text' to ASCII subset.
+
+instance Arbitrary Row where
+    arbitrary = Row Nothing <$> listOf1 arbitrary
 
 instance Arbitrary ColumnType where
     arbitrary = oneof [ pure IntegerColumn
@@ -47,7 +51,7 @@ instance Arbitrary ColumnValue where
 
 instance Arbitrary Statement where
     arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
-                      , InsertInto <$> arbitrary <*> listOf1 arbitrary
+                      , InsertInto <$> arbitrary <*> arbitrary
                       , SelectAll <$> arbitrary
                       ]
 
@@ -72,8 +76,8 @@ instance ToSQL TableSchema where
 instance ToSQL Statement where
     toSQL (CreateTable table schema) =
         format "CREATE TABLE {}({});" [LT.fromStrict table, toSQL schema]
-    toSQL (InsertInto table cvs) =
-        let (names, values) = unzip cvs in
+    toSQL (InsertInto table (Row { rowData })) =
+        let (names, values) = unzip rowData in
         format "INSERT INTO {}({}) VALUES ({});"
         [ LT.fromStrict table
         , LT.intercalate ", " $ map LT.fromStrict names

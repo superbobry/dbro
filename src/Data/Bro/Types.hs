@@ -1,6 +1,9 @@
 module Data.Bro.Types
   ( TableName
   , TableSchema
+  , Table(..)
+  , RowId
+  , Row(..)
   , ColumnName
   , ColumnType(..)
   , ColumnValue(..)
@@ -11,6 +14,12 @@ import Data.Word (Word8)
 
 import Data.Text (Text)
 
+type RowId = Int
+
+data Row = Row { rowId   :: Maybe RowId
+               , rowData :: ![(ColumnName, ColumnValue)]
+               } deriving (Eq, Show)
+
 type ColumnName = Text
 data ColumnType = IntegerColumn
                 | DoubleColumn
@@ -19,13 +28,17 @@ data ColumnType = IntegerColumn
 
 data ColumnValue = IntegerValue Integer
                  | DoubleValue Double
-                 | VarcharValue Text
+                 | VarcharValue !Text
                  deriving (Eq, Show)
 
 type TableName = Text
 type TableSchema = [(ColumnName, ColumnType)]
 
+data Table = Table { tabName   :: TableName
+                   , tabSchema :: !TableSchema
+                   }
+
 data Statement = CreateTable TableName TableSchema
-               | InsertInto TableName [(ColumnName, ColumnValue)]
+               | InsertInto TableName Row
                | SelectAll TableName
                deriving (Eq, Show)

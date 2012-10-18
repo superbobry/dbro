@@ -16,7 +16,7 @@ import Data.Attoparsec.Text (Parser, Number(..), choice, takeWhile,
                              skipSpace)
 
 import Data.Bro.Types (TableName, TableSchema,
-                       ColumnName, ColumnType(..), ColumnValue(..),
+                       Row(..), ColumnName, ColumnType(..), ColumnValue(..),
                        Statement(..))
 
 statement :: Parser Statement
@@ -34,7 +34,7 @@ statement = choice [selectAll, createTable, insertInto]
         columns <- listOf1 columnName
         token "values"
         values <- listOf1 columnValue
-        return $! InsertInto table (zip columns values)
+        return $! InsertInto table (Row Nothing $ zip columns values)
 
     selectAll = do
         tokens ["select", "*", "from"]

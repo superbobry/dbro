@@ -33,6 +33,7 @@ library
     cpp-options: -DDEBUG
 
   exposed-modules:
+    Data.Bro.Backend
     Data.Bro.Types
     Data.Bro.Parser
 
