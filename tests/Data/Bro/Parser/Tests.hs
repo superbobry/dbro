@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances #-}
 
 module Data.Bro.Parser.Tests
   ( tests
@@ -10,15 +10,22 @@ import Data.Attoparsec.Text (parseOnly)
 import Data.Text.Format (format)
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck (Arbitrary(..), Property,
-                        oneof, printTestCase)
-import Test.QuickCheck.Instances ()
+import Test.QuickCheck (Arbitrary(..), Property, Gen,
+                        oneof, listOf1, elements, printTestCase)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 
 import Data.Bro.Parser (statement)
 import Data.Bro.Types (ColumnType(..), ColumnValue(..),
                        TableSchema, Statement(..))
+
+-- | Generate a valid SQL symbol name, currently a stub, which generates
+-- words in the alphabet /[a-fA-F0-9]/.
+symbol :: Gen T.Text
+symbol = T.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'])
+
+instance Arbitrary T.Text where
+    arbitrary = symbol  -- restrict 'Text' to ASCII subset.
 
 instance Arbitrary ColumnType where
     arbitrary = oneof [ pure IntegerColumn
@@ -33,10 +40,40 @@ instance Arbitrary ColumnValue where
                       ]
 
 instance Arbitrary Statement where
-    arbitrary = oneof [ CreateTable <$> arbitrary <*> arbitrary
-                      , InsertInto <$> arbitrary <*> arbitrary
+    arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
+                      , InsertInto <$> arbitrary <*> listOf1 arbitrary
                       , SelectAll <$> arbitrary
                       ]
+
+class ToSQL a where
+    toSQL :: a -> LT.Text
+
+instance ToSQL ColumnType where
+    toSQL IntegerColumn = "INT"
+    toSQL DoubleColumn = "DOUBLE"
+    toSQL (VarcharColumn l) = format "VARCHAR({})" [show l]
+
+instance ToSQL ColumnValue where
+    toSQL (IntegerValue x) = LT.pack $ show x
+    toSQL (DoubleValue d) = LT.pack $ show d
+    toSQL (VarcharValue t) = LT.pack $ show t
+
+instance ToSQL TableSchema where
+    toSQL schema = LT.intercalate ", " $ do
+        (name, t) <- schema
+        return $! format "{} {}" [LT.fromStrict name, toSQL t]
+
+instance ToSQL Statement where
+    toSQL (CreateTable table schema) =
+        format "CREATE TABLE {}({});" [LT.fromStrict table, toSQL schema]
+    toSQL (InsertInto table cvs) =
+        let (names, values) = unzip cvs in
+        format "INSERT INTO {}({}) VALUES ({});"
+        [ LT.fromStrict table
+        , LT.intercalate ", " $ map LT.fromStrict names
+        , LT.intercalate ", " $ map toSQL values
+        ]
+    toSQL (SelectAll table) = format "SELECT * FROM {};" [LT.fromStrict table]
 
 tests :: Test
 tests = testGroup "Data.Bro.Parser.Tests"
@@ -45,36 +82,7 @@ tests = testGroup "Data.Bro.Parser.Tests"
 
 prop_statementParseUnparse :: Statement -> Property
 prop_statementParseUnparse s =
-    let sql = LT.toStrict $ unparse s in
     printTestCase (T.unpack sql) $
     parseOnly statement sql == Right s
   where
-    unparse :: Statement -> LT.Text
-    unparse (CreateTable table schema) =
-        format "CREATE TABLE {}({});"
-        [LT.fromStrict table, unparseSchema schema]
-    unparse (InsertInto table cvs) =
-        let (names, values) = unzip cvs in
-        format "INSERT INTO {}({}) VALUES ({});"
-        [ LT.fromStrict table
-        , LT.intercalate ", " $ map LT.fromStrict names
-        , LT.intercalate ", " $ map unparseColumnValue values
-        ]
-    unparse (SelectAll table) =
-        format "SELECT * FROM {};" $ [LT.fromStrict table]
-
-    unparseSchema :: TableSchema -> LT.Text
-    unparseSchema schema = LT.intercalate ", " $ do
-        (name, t) <- schema
-        return $!
-            format "{} {}" [LT.fromStrict name, unparseColumnType t]
-
-    unparseColumnType :: ColumnType -> LT.Text
-    unparseColumnType IntegerColumn = "INT"
-    unparseColumnType DoubleColumn = "DOUBLE"
-    unparseColumnType (VarcharColumn l) = format "VARCHAR({})" $ show l
-
-    unparseColumnValue :: ColumnValue -> LT.Text
-    unparseColumnValue (IntegerValue x) = LT.pack $ show x
-    unparseColumnValue (DoubleValue d) = LT.pack $ show d
-    unparseColumnValue (VarcharValue t) = LT.fromStrict t
+    sql = LT.toStrict $ toSQL s

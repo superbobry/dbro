@@ -44,8 +44,7 @@ tableName = word
 
 tableSchema :: Parser TableSchema
 tableSchema = list1 $ do
-    name <- columnName
-    void $ skipSpace
+    name <- columnName <* skipSpace
     t    <- columnType
     return $ (name, t)
 
@@ -56,13 +55,13 @@ columnType :: Parser ColumnType
 columnType =
     choice [ stringCI "int" *> pure IntegerColumn
            , stringCI "double" *> pure DoubleColumn
-           , VarcharColumn <$> (token "varchar" *> decimal)
+           , VarcharColumn <$> (token "varchar" *> between '(' ')' decimal)
            ]
 
 columnValue :: Parser ColumnValue
 columnValue = choice [ IntegerValue <$> signed decimal
-                     , DoubleValue <$> signed double
-                     , VarcharValue <$> word
+                     , DoubleValue  <$> signed double
+                     , VarcharValue <$> between '"' '"' word
                      ]
 
 word :: Parser Text
@@ -70,7 +69,7 @@ word = takeWhile isAlphaNum
 {-# INLINE word #-}
 
 token :: Text -> Parser ()
-token s = void $ stringCI s *> skipSpace
+token s = void $ skipSpace *> stringCI s *> skipSpace
 {-# INLINE token #-}
 
 tokens :: [Text] -> Parser ()
