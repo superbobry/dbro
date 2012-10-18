@@ -17,12 +17,12 @@ type ColumnName = Text
 data ColumnType = IntegerColumn
                 | DoubleColumn
                 | VarcharColumn Word8
-                deriving Eq
+                deriving (Eq, Show)
 
 data ColumnValue = IntegerValue Int
                  | DoubleValue Double
                  | VarcharValue Text
-                 deriving Eq
+                 deriving (Eq, Show)
 
 type TableName = Text
 type TableSchema = [(ColumnName, ColumnType)]
@@ -30,10 +30,4 @@ type TableSchema = [(ColumnName, ColumnType)]
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName [(ColumnName, ColumnValue)]
                | SelectAll TableName
-               deriving Eq
-
-#ifdef DEBUG
-deriving instance Show ColumnType
-deriving instance Show ColumnValue
-deriving instance Show Statement
-#endif
+               deriving (Eq, Show)
