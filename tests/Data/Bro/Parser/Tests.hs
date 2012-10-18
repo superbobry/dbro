@@ -35,9 +35,15 @@ instance Arbitrary ColumnType where
 
 instance Arbitrary ColumnValue where
     arbitrary = oneof [ IntegerValue <$> arbitrary
-                      , DoubleValue <$> arbitrary
+                      , DoubleValue <$> almostDouble
                       , VarcharValue <$> arbitrary
                       ]
+      where
+        almostDouble :: Gen Double
+        almostDouble = fromIntegral <$>
+                       -- HACK(Sergei): we need this because 'number' in
+                       -- 'attoparsec' has reduced accuracy.
+                       (truncate <$> (arbitrary :: Gen Double) :: Gen Int)
 
 instance Arbitrary Statement where
     arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
@@ -49,9 +55,9 @@ class ToSQL a where
     toSQL :: a -> LT.Text
 
 instance ToSQL ColumnType where
-    toSQL IntegerColumn = "INT"
-    toSQL DoubleColumn = "DOUBLE"
-    toSQL (VarcharColumn l) = format "VARCHAR({})" [show l]
+    toSQL IntegerColumn = "int"
+    toSQL DoubleColumn = "double"
+    toSQL (VarcharColumn l) = format "varchar({})" [show l]
 
 instance ToSQL ColumnValue where
     toSQL (IntegerValue x) = LT.pack $ show x
