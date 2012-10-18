@@ -30,9 +30,9 @@ statement = choice [selectAll, createTable, insertInto]
     insertInto = do
         tokens ["insert", "into"]
         table <- takeWhile isAlphaNum
-        columns <- list1 columnName
+        columns <- listOf1 columnName
         token "values"
-        values <- list1 columnValue
+        values <- listOf1 columnValue
         return $! InsertInto table (zip columns values)
 
     selectAll = do
@@ -43,7 +43,7 @@ tableName :: Parser TableName
 tableName = word
 
 tableSchema :: Parser TableSchema
-tableSchema = list1 $ do
+tableSchema = listOf1 $ do
     name <- columnName <* skipSpace
     t    <- columnType
     return $ (name, t)
@@ -81,6 +81,6 @@ between open close p =
     (char open <* skipSpace) *> p <* (skipSpace *> char close)
 {-# INLINE between #-}
 
-list1 :: Parser a -> Parser [a]
-list1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
-{-# INLINE list1 #-}
+listOf1 :: Parser a -> Parser [a]
+listOf1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
+{-# INLINE listOf1 #-}
