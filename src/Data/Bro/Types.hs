@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP, StandaloneDeriving #-}
-
 module Data.Bro.Types
   ( TableName
   , TableSchema
@@ -19,7 +17,7 @@ data ColumnType = IntegerColumn
                 | VarcharColumn Word8
                 deriving (Eq, Show)
 
-data ColumnValue = IntegerValue Int
+data ColumnValue = IntegerValue Integer
                  | DoubleValue Double
                  | VarcharValue Text
                  deriving (Eq, Show)

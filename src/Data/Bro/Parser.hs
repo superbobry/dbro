@@ -2,17 +2,20 @@
 
 module Data.Bro.Parser
   ( statement
+  , columnValue
   ) where
 
-import Control.Applicative ((<$>), (<*>), (<*), (*>), pure)
+import Control.Applicative ((<$>), (<*>), (<*), (*>), (<|>), pure)
 import Control.Monad (void)
 import Data.Char (isAlphaNum)
 import Prelude hiding (takeWhile)
 
 import Data.Text (Text)
-import Data.Attoparsec.Text (Parser, choice, takeWhile, sepBy1,
-                             signed, decimal, double, char, stringCI,
+import Data.Attoparsec.Text (Parser, Number(..), (<?>), choice, takeWhile,
+                             sepBy1,
+                             decimal, number, char, stringCI,
                              skipSpace)
+import qualified Data.Text as T
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
@@ -23,11 +26,11 @@ statement = choice [selectAll, createTable, insertInto]
             <* skipSpace
             <* char ';'
   where
-    createTable = do
+    createTable = "createTable" ?> do
         tokens ["create", "table"]
         CreateTable <$> tableName <*> tableSchema
 
-    insertInto = do
+    insertInto = "insertInto" ?> do
         tokens ["insert", "into"]
         table <- takeWhile isAlphaNum
         columns <- listOf1 columnName
@@ -35,12 +38,12 @@ statement = choice [selectAll, createTable, insertInto]
         values <- listOf1 columnValue
         return $! InsertInto table (zip columns values)
 
-    selectAll = do
+    selectAll = "selectAll" ?> do
         tokens ["select", "*", "from"]
         SelectAll <$> tableName
 
 tableName :: Parser TableName
-tableName = word
+tableName = "tableName" ?> word
 
 tableSchema :: Parser TableSchema
 tableSchema = listOf1 $ do
@@ -49,27 +52,34 @@ tableSchema = listOf1 $ do
     return $ (name, t)
 
 columnName :: Parser ColumnName
-columnName = word
+columnName = "columnName" ?> word
 
 columnType :: Parser ColumnType
 columnType =
+    "columnType" ?>
     choice [ stringCI "int" *> pure IntegerColumn
            , stringCI "double" *> pure DoubleColumn
            , VarcharColumn <$> (token "varchar" *> between '(' ')' decimal)
            ]
 
 columnValue :: Parser ColumnValue
-columnValue = choice [ IntegerValue <$> signed decimal
-                     , DoubleValue  <$> signed double
-                     , VarcharValue <$> between '"' '"' word
-                     ]
+columnValue = "columnValue" ?> varcharValue <|> numberValue where
+  varcharValue :: Parser ColumnValue
+  varcharValue = VarcharValue <$> between '"' '"' word
+
+  numberValue :: Parser ColumnValue
+  numberValue = do
+      result <- number
+      return $ case result of
+          I i -> IntegerValue i
+          D d -> DoubleValue d
 
 word :: Parser Text
 word = takeWhile isAlphaNum
 {-# INLINE word #-}
 
 token :: Text -> Parser ()
-token s = void $ skipSpace *> stringCI s *> skipSpace
+token s = T.unpack s ?> void (skipSpace *> stringCI s *> skipSpace)
 {-# INLINE token #-}
 
 tokens :: [Text] -> Parser ()
@@ -84,3 +94,8 @@ between open close p =
 listOf1 :: Parser a -> Parser [a]
 listOf1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
 {-# INLINE listOf1 #-}
+
+(?>) :: String -> Parser a -> Parser a
+(?>) = flip (<?>)
+{-# INLINE (?>) #-}
+infix 0 ?>

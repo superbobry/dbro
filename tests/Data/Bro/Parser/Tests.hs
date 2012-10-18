@@ -22,7 +22,7 @@ import Data.Bro.Types (ColumnType(..), ColumnValue(..),
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
 symbol :: Gen T.Text
-symbol = T.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'])
+symbol = T.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'])
 
 instance Arbitrary T.Text where
     arbitrary = symbol  -- restrict 'Text' to ASCII subset.
@@ -82,7 +82,12 @@ tests = testGroup "Data.Bro.Parser.Tests"
 
 prop_statementParseUnparse :: Statement -> Property
 prop_statementParseUnparse s =
-    printTestCase (T.unpack sql) $
-    parseOnly statement sql == Right s
+    printTestCase ("SQL: " ++ T.unpack sql) $
+    printTestCase ("AST: " ++ show s) $
+    printTestCase ("RES: " ++ show result) $
+    case result of
+        Left _msg -> False
+        Right s'  -> s == s'
   where
     sql = LT.toStrict $ toSQL s
+    result = parseOnly statement sql
