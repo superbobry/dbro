@@ -34,9 +34,11 @@ data ColumnValue = IntegerValue Integer
 type TableName = Text
 type TableSchema = [(ColumnName, ColumnType)]
 
-data Table = Table { tabName   :: TableName
-                   , tabSchema :: !TableSchema
-                   }
+data Table = Table { tabName    :: TableName
+                   , tabSchema  :: !TableSchema
+                   , tabData    :: [(RowId, [ColumnValue])]
+                   , tabCounter :: RowId
+                   } deriving (Eq, Show)
 
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName Row
