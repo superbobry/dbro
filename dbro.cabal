@@ -41,7 +41,7 @@ library
   build-depends:    base
                   , attoparsec == 0.10.2.*
                   , text == 0.11.2.*
-                  , containers == 0.4.*
+                  , containers == 0.5.*
 
 test-suite dbro-tests
   hs-source-dirs: tests
