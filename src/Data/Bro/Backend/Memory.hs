@@ -2,6 +2,7 @@
 
 module Data.Bro.Backend.Memory
   ( MemoryBackend
+  , makeMemoryBackend
   ) where
 
 import Data.Map (Map)
@@ -41,3 +42,6 @@ instance Backend MemoryBackend where
         case lookupTable b name of
             Just _table -> return b { memTables = M.delete name memTables }
             Nothing     -> Left TableDoesNotExist
+
+makeMemoryBackend :: MemoryBackend
+makeMemoryBackend = MemoryBackend { memTables = Map.empty }
