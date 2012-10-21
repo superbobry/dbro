@@ -7,15 +7,23 @@ module Data.Bro.Backend
   , withTable
   , insertInto
   , selectAll
+  , exec
   ) where
 
 import Control.Applicative ((<$>))
 import Data.Maybe (fromMaybe)
 
-import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId)
+import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId, ColumnValue, 
+                       Statement(..))
 
 data BackendError = TableDoesNotExist
                   | TableAlreadyExists
+                  deriving Show
+
+data ExecResult = Create
+                | Insert RowId
+                | Select [(RowId, ColumnValue)]
+                deriving Show
 
 class Backend b where
     createTable :: b -> TableName -> TableSchema -> Either BackendError b
@@ -26,6 +34,12 @@ class Backend b where
 
     deleteTable :: b -> TableName -> Either BackendError b
 
+exec :: Backend b => b -> Statement -> Either BackendError (b, ExecResult)
+exec b (CreateTable name schema) = case createTable b name schema of
+                                       Right newB -> Right (newB, Create)
+                                       Left e -> Left e
+--exec b (InsertInto name row) = (b, insertInto b name row >>= return . Insert
+--exec b (SelectAll name) = selectAll b name >>= return . Select
 
 withTable :: Backend b => b -> TableName -> (Table -> a) -> Maybe a
 withTable b name f = f <$> lookupTable b name

@@ -44,4 +44,4 @@ instance Backend MemoryBackend where
             Nothing     -> Left TableDoesNotExist
 
 makeMemoryBackend :: MemoryBackend
-makeMemoryBackend = MemoryBackend { memTables = Map.empty }
+makeMemoryBackend = MemoryBackend { memTables = M.empty }

@@ -44,7 +44,7 @@ tableName :: Parser TableName
 tableName = word
 
 tableSchema :: Parser TableSchema
-tableSchema = listOf1 $ do
+tableSchema = spaced . listOf1 $ do
     name <- columnName <* skipSpace
     t    <- columnType
     return $ (name, t)
@@ -69,6 +69,9 @@ columnValue = varcharValue <|> numberValue where
       return $ case result of
           I i -> IntegerValue i
           D d -> DoubleValue d
+
+spaced :: (Parser a) -> (Parser a)
+spaced p = skipSpace *> p <* skipSpace
 
 word :: Parser Text
 word = takeWhile isAlphaNum
