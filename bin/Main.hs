@@ -15,7 +15,7 @@ mainLoop b = do
              input <- getLine
              case parseOnly statement input of
                 Left e 	-> putStrLn ("ParseError: " ++ e) >> mainLoop b
-                Right s -> case exec b s of 
+                Right s -> case exec b s of
                                Left be -> putStrLn ("Error: " ++ show be) >> mainLoop b
                                Right (newB, res) -> putStrLn ("OK: " ++ show res) >> mainLoop newB
 

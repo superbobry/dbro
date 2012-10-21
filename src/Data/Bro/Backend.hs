@@ -1,9 +1,8 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, TupleSections #-}
 
 module Data.Bro.Backend
   ( Backend(..)
   , BackendError(..)
-
   , withTable
   , insertInto
   , selectAll
@@ -11,18 +10,17 @@ module Data.Bro.Backend
   ) where
 
 import Control.Applicative ((<$>))
-import Data.Maybe (fromMaybe)
 
-import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId, ColumnValue, 
+import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId,
                        Statement(..))
 
 data BackendError = TableDoesNotExist
                   | TableAlreadyExists
                   deriving Show
 
-data ExecResult = Create
-                | Insert RowId
-                | Select [(RowId, ColumnValue)]
+data ExecResult = Created
+                | Inserted RowId
+                | Selected [Row]
                 deriving Show
 
 class Backend b where
@@ -35,11 +33,13 @@ class Backend b where
     deleteTable :: b -> TableName -> Either BackendError b
 
 exec :: Backend b => b -> Statement -> Either BackendError (b, ExecResult)
-exec b (CreateTable name schema) = case createTable b name schema of
-                                       Right newB -> Right (newB, Create)
-                                       Left e -> Left e
---exec b (InsertInto name row) = (b, insertInto b name row >>= return . Insert
---exec b (SelectAll name) = selectAll b name >>= return . Select
+exec b (CreateTable name schema) = (, Created) <$> createTable b name schema
+exec b (InsertInto name row) = do
+    (rowId, b') <- insertInto b name row
+    return $ (b', Inserted rowId)
+exec b (SelectAll name) = do
+    rows <- selectAll b name
+    return $ (b, Selected rows)
 
 withTable :: Backend b => b -> TableName -> (Table -> a) -> Maybe a
 withTable b name f = f <$> lookupTable b name
@@ -51,11 +51,14 @@ insertInto b name (Row { rowId = Nothing, .. }) =
                    , tabCounter = tabCounter + 1
                    }
         in (tabCounter, t')
+insertInto _b _name _row = error "insertInto: existing Row"
 
-selectAll :: Backend b => b -> TableName -> [Row]
-selectAll b name = fromMaybe [] result where
-  result = withTable b name $ \Table { .. } -> do
-      (rowId, rowValues) <- tabData
-      return $ Row { rowId = Just rowId
-                   , rowData = zip (map fst tabSchema) rowValues
-                   }
+selectAll :: Backend b => b -> TableName -> Either BackendError [Row]
+selectAll b name =
+    maybe (Left TableDoesNotExist) Right result
+  where
+    result = withTable b name $ \Table { .. } -> do
+        (rowId, rowValues) <- tabData
+        return $ Row { rowId = Just rowId
+                     , rowData = zip (map fst tabSchema) rowValues
+                     }

@@ -30,7 +30,7 @@ statement = choice [selectAll, createTable, insertInto]
 
     insertInto = do
         tokens ["insert", "into"]
-        table <- takeWhile isAlphaNum
+        table <- word
         columns <- listOf1 columnName
         token "values"
         values <- listOf1 columnValue
@@ -70,15 +70,16 @@ columnValue = varcharValue <|> numberValue where
           I i -> IntegerValue i
           D d -> DoubleValue d
 
-spaced :: (Parser a) -> (Parser a)
+spaced :: Parser a -> Parser a
 spaced p = skipSpace *> p <* skipSpace
+{-# INLINE spaced #-}
 
 word :: Parser Text
 word = takeWhile isAlphaNum
 {-# INLINE word #-}
 
 token :: Text -> Parser ()
-token s = void (skipSpace *> stringCI s *> skipSpace)
+token = void . spaced . stringCI
 {-# INLINE token #-}
 
 tokens :: [Text] -> Parser ()
@@ -86,8 +87,7 @@ tokens = mapM_ token
 {-# INLINE tokens #-}
 
 between :: Char -> Char -> Parser a -> Parser a
-between open close p =
-    (char open <* skipSpace) *> p <* (skipSpace *> char close)
+between open close p = char open *> spaced p <* char close
 {-# INLINE between #-}
 
 listOf1 :: Parser a -> Parser [a]
