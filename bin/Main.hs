@@ -1,23 +1,34 @@
-
 module Main where
 
-import Prelude hiding (getLine)
+import Prelude hiding (getLine, putStrLn)
+
+import Control.Monad (forever)
+import Data.IORef (newIORef, readIORef, writeIORef)
 
 import Data.Attoparsec.Text (parseOnly)
-import Data.Text.IO (getLine)
+import Data.Text (Text)
+import Data.Text.IO (getLine, putStrLn)
+import qualified Data.Text as T
 
 import Data.Bro.Parser (statement)
 import Data.Bro.Backend (Backend(..), exec)
 import Data.Bro.Backend.Memory (makeMemoryBackend)
 
-mainLoop :: Backend b => b -> IO ()
-mainLoop b = do
-             input <- getLine
-             case parseOnly statement input of
-                Left e 	-> putStrLn ("ParseError: " ++ e) >> mainLoop b
-                Right s -> case exec b s of
-                               Left be -> putStrLn ("Error: " ++ show be) >> mainLoop b
-                               Right (newB, res) -> putStrLn ("OK: " ++ show res) >> mainLoop newB
 
 main :: IO ()
-main = mainLoop makeMemoryBackend
+main = do
+    bref <- newIORef makeMemoryBackend
+    forever $ do
+        l <- getLine
+        b <- readIORef bref
+        let (b', result) = process b l
+        putStrLn result
+        writeIORef bref b'
+  where
+    process :: Backend b => b -> Text -> (b, Text)
+    process b l = case parseOnly statement l of
+        Left err -> (b, T.pack $ "ParseError: " ++ err)
+        Right s  ->
+            case exec b s of
+                Left err -> (b, T.pack $ "Error: " ++ show err)
+                Right (b', result) -> (b', T.pack $ show result)
