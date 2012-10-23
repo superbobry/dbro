@@ -27,7 +27,7 @@ instance Backend MemoryBackend where
         table = Table { tabName = name
                       , tabSchema = schema
                       , tabData = []
-                      , tabCounter = 0
+                      , tabCounter = 1
                       }
 
     modifyTable b@(MemoryBackend { .. }) name f =
