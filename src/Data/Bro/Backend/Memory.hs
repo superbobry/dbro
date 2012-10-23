@@ -33,9 +33,9 @@ instance Backend MemoryBackend where
     modifyTable b@(MemoryBackend { .. }) name f =
         case lookupTable b name of
             Just table ->
-                let (acc, table') = f table
+                let (table', acc) = f table
                     b' = b { memTables = M.insert name table' memTables }
-                in return (acc, b')
+                in return (b', acc)
             Nothing    -> Left TableDoesNotExist
 
     deleteTable b@(MemoryBackend { .. }) name =

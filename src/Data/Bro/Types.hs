@@ -17,7 +17,7 @@ import Data.Text (Text)
 type RowId = Int
 
 data Row = Row { rowId   :: Maybe RowId
-               , rowData :: ![(ColumnName, ColumnValue)]
+               , rowData :: ![ColumnValue]
                } deriving (Eq, Show)
 
 type ColumnName = Text
@@ -36,11 +36,11 @@ type TableSchema = [(ColumnName, ColumnType)]
 
 data Table = Table { tabName    :: TableName
                    , tabSchema  :: !TableSchema
-                   , tabData    :: [(RowId, [ColumnValue])]
+                   , tabData    :: ![Row]
                    , tabCounter :: RowId
                    } deriving (Eq, Show)
 
 data Statement = CreateTable TableName TableSchema
-               | InsertInto TableName Row
+               | InsertInto TableName ![(ColumnName, ColumnValue)]
                | SelectAll TableName
                deriving (Eq, Show)

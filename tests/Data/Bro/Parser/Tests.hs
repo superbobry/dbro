@@ -51,7 +51,7 @@ instance Arbitrary ColumnValue where
 
 instance Arbitrary Statement where
     arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
-                      , InsertInto <$> arbitrary <*> arbitrary
+                      , InsertInto <$> arbitrary <*> listOf1 arbitrary
                       , SelectAll <$> arbitrary
                       ]
 
@@ -76,8 +76,8 @@ instance ToSQL TableSchema where
 instance ToSQL Statement where
     toSQL (CreateTable table schema) =
         format "CREATE TABLE {}({});" [LT.fromStrict table, toSQL schema]
-    toSQL (InsertInto table (Row { rowData })) =
-        let (names, values) = unzip rowData in
+    toSQL (InsertInto table pairs) =
+        let (names, values) = unzip pairs in
         format "INSERT INTO {}({}) VALUES ({});"
         [ LT.fromStrict table
         , LT.intercalate ", " $ map LT.fromStrict names
