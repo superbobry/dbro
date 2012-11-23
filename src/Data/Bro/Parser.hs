@@ -5,15 +5,16 @@ module Data.Bro.Parser
   , columnValue
   ) where
 
+import Prelude hiding (takeWhile)
+
 import Control.Applicative ((<$>), (<*>), (<*), (*>), (<|>), pure)
 import Control.Monad (void)
 import Data.Char (isAlphaNum)
-import Prelude hiding (takeWhile)
+import qualified Data.ByteString.Char8 as S
 
-import Data.Text (Text)
-import Data.Attoparsec.Text (Parser, Number(..), choice, takeWhile,
-                             sepBy1, number, decimal, char, stringCI,
-                             skipSpace)
+import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), choice, takeWhile,
+                                         sepBy1, number, decimal, char, stringCI,
+                                         skipSpace)
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
@@ -47,7 +48,7 @@ tableSchema :: Parser TableSchema
 tableSchema = spaced . listOf1 $ do
     name <- columnName <* skipSpace
     t    <- columnType
-    return $ (name, t)
+    return (name, t)
 
 columnName :: Parser ColumnName
 columnName = word
@@ -74,15 +75,15 @@ spaced :: Parser a -> Parser a
 spaced p = skipSpace *> p <* skipSpace
 {-# INLINE spaced #-}
 
-word :: Parser Text
+word :: Parser S.ByteString
 word = takeWhile isAlphaNum
 {-# INLINE word #-}
 
-token :: Text -> Parser ()
+token :: S.ByteString -> Parser ()
 token = void . spaced . stringCI
 {-# INLINE token #-}
 
-tokens :: [Text] -> Parser ()
+tokens :: [S.ByteString] -> Parser ()
 tokens = mapM_ token
 {-# INLINE tokens #-}
 

@@ -1,34 +1,23 @@
 module Main where
 
-import Prelude hiding (getLine, putStrLn)
+import Control.Applicative ((<$>))
+import Control.Monad (forever, void)
 
-import Control.Monad (forever)
-import Data.IORef (newIORef, readIORef, writeIORef)
-
-import Data.Attoparsec.Text (parseOnly)
-import Data.Text (Text)
-import Data.Text.IO (getLine, putStrLn)
-import qualified Data.Text as T
+import Control.Monad.Trans (liftIO)
+import Data.Attoparsec.ByteString.Char8 (parseOnly)
+import qualified Data.ByteString.Char8 as S
 
 import Data.Bro.Parser (statement)
-import Data.Bro.Backend (Backend(..), exec)
+import Data.Bro.Backend (Backend(..), BackendError, exec)
 import Data.Bro.Backend.Memory (makeMemoryBackend)
-
+import Data.Bro.Monad (Bro, runBro)
 
 main :: IO ()
-main = do
-    bref <- newIORef makeMemoryBackend
-    forever $ do
-        l <- getLine
-        b <- readIORef bref
-        let (b', result) = process b l
-        putStrLn result
-        writeIORef bref b'
-  where
-    process :: Backend b => b -> Text -> (b, Text)
-    process b l = case parseOnly statement l of
-        Left err -> (b, T.pack $ "ParseError: " ++ err)
-        Right s  ->
-            case exec b s of
-                Left err -> (b, T.pack $ "Error: " ++ show err)
-                Right (b', result) -> (b', T.pack $ show result)
+main = void $ runBro (forever process) makeMemoryBackend where
+  process :: Backend b => Bro BackendError b ()
+  process = do
+      l   <- liftIO S.getLine
+      res <- case parseOnly statement l of
+          Left err -> return . S.pack $ "ParseError: " ++ err
+          Right s  -> S.pack . show <$> exec s
+      liftIO $! S.putStrLn res

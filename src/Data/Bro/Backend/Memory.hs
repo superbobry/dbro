@@ -5,23 +5,27 @@ module Data.Bro.Backend.Memory
   , makeMemoryBackend
   ) where
 
+import Control.Applicative ((<$>))
 import Data.Map (Map)
 import qualified Data.Map as M
+
+import Control.Monad.Error (throwError)
+import Control.Monad.State (gets, modify)
 
 import Data.Bro.Backend (Backend(..), BackendError(..))
 import Data.Bro.Types (TableName, Table(..))
 
-
 data MemoryBackend = MemoryBackend { memTables :: Map TableName Table }
 
 instance Backend MemoryBackend where
-    lookupTable (MemoryBackend { .. }) name = M.lookup name memTables
+    lookupTable name = M.lookup name <$> gets memTables
 
-    createTable b@(MemoryBackend { .. }) name schema =
-        case lookupTable b name of
-            Just _table -> Left TableAlreadyExists
-            Nothing     ->
-                return b { memTables = M.insert name table memTables }
+    insertTable name schema = do
+        res <- lookupTable name
+        case res of
+            Just _table -> throwError TableAlreadyExists
+            Nothing     -> modify $ \b@(MemoryBackend { .. }) ->
+                b { memTables = M.insert name table memTables }
       where
         table :: Table
         table = Table { tabName = name
@@ -30,18 +34,19 @@ instance Backend MemoryBackend where
                       , tabCounter = 1
                       }
 
-    modifyTable b@(MemoryBackend { .. }) name f =
-        case lookupTable b name of
-            Just table ->
-                let (table', acc) = f table
-                    b' = b { memTables = M.insert name table' memTables }
-                in return (b', acc)
-            Nothing    -> Left TableDoesNotExist
+    modifyTable name f = do
+        res <- lookupTable name
+        case res of
+            Just table -> modify $ \b@(MemoryBackend { .. }) ->
+                b { memTables = M.insert name (f table) memTables }
+            Nothing    -> throwError TableDoesNotExist
 
-    deleteTable b@(MemoryBackend { .. }) name =
-        case lookupTable b name of
-            Just _table -> return b { memTables = M.delete name memTables }
-            Nothing     -> Left TableDoesNotExist
+    deleteTable name = do
+        res <- lookupTable name
+        case res of
+            Just _table -> modify $ \b@(MemoryBackend { .. }) ->
+                b { memTables = M.delete name memTables }
+            Nothing     -> throwError TableDoesNotExist
 
 makeMemoryBackend :: MemoryBackend
 makeMemoryBackend = MemoryBackend { memTables = M.empty }
