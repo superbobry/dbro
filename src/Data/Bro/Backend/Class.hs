@@ -1,12 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Data.Bro.Backend.Class
   ( Backend(..)
   , Query(..)
   , withTable
   ) where
-
-import qualified Data.ByteString.Char8 as S
 
 import Control.Monad.Error (throwError)
 
