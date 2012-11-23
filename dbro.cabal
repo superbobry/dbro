@@ -35,9 +35,11 @@ library
 
   exposed-modules:
     Data.Bro.Backend
-    Data.Bro.Backend.Disk
-    Data.Bro.Backend.Memory
     Data.Bro.Backend.Class
+    Data.Bro.Backend.Disk
+    Data.Bro.Backend.Error
+    Data.Bro.Backend.Memory
+    Data.Bro.Backend.Result
     Data.Bro.Monad
     Data.Bro.Types
     Data.Bro.Parser

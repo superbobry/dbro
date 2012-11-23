@@ -8,7 +8,7 @@ module Data.Bro.Backend.Disk
 import Data.Binary (Binary, decodeFile)
 import Data.Map (Map)
 
-import Data.Bro.Backend (Backend(..))
+import Data.Bro.Backend.Class (Backend(..))
 import Data.Bro.Types (TableName, TableSchema)
 
 newtype DiskBackend = DiskBackend (Map TableName TableSchema) deriving Binary

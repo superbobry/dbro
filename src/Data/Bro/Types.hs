@@ -1,8 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Data.Bro.Types
-  ( Ref(..)
-  , TableName
+  ( TableName
   , TableSchema
   , Table(..)
   , RowId
@@ -19,8 +18,6 @@ import Data.Binary (Binary(..), get, put)
 
 import qualified Data.ByteString.Char8 as S
 
-newtype Ref a = Ref Int deriving (Eq, Ord, Show)
-
 type RowId = Int
 
 data Row = Row { rowId   :: Maybe RowId
@@ -31,7 +28,7 @@ type ColumnName = S.ByteString
 data ColumnType = IntegerColumn
                 | DoubleColumn
                 | VarcharColumn Word8
-                deriving (Eq, Show)
+    deriving (Eq, Show)
 
 instance Binary ColumnType where
     put IntegerColumn = put 'i'
@@ -47,7 +44,7 @@ instance Binary ColumnType where
 data ColumnValue = IntegerValue Integer
                  | DoubleValue Double
                  | VarcharValue S.ByteString
-                 deriving (Eq, Show)
+    deriving (Eq, Show)
 
 instance Binary ColumnValue where
     put (IntegerValue v) = put 'i' >> put v
@@ -72,4 +69,4 @@ data Table = Table { tabName    :: TableName
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName ![(ColumnName, ColumnValue)]
                | SelectAll TableName
-               deriving (Eq, Show)
+    deriving (Eq, Show)

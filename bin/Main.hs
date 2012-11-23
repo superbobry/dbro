@@ -8,14 +8,16 @@ import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import qualified Data.ByteString.Char8 as S
 
 import Data.Bro.Parser (statement)
-import Data.Bro.Backend (Backend(..), BackendError, Result(..), exec)
-import Data.Bro.Backend.Class (format)
+import Data.Bro.Backend (exec)
+import Data.Bro.Backend.Class (Backend(..), Query)
+import Data.Bro.Backend.Error (BackendError(..))
+import Data.Bro.Backend.Result (Result(..), format)
 import Data.Bro.Backend.Memory (makeMemoryBackend)
 import Data.Bro.Monad (Bro, runBro)
 
 main :: IO ()
 main = void $ runBro (forever process) makeMemoryBackend where
-  process :: Backend b => Bro BackendError b ()
+  process :: (Backend b, Query b) => Bro BackendError b ()
   process = do
       l   <- liftIO S.getLine
       res <- case parseOnly statement l of
