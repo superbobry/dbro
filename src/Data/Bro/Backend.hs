@@ -1,23 +1,29 @@
-{-# LANGUAGE NamedFieldPuns, TupleSections #-}
+{-# LANGUAGE NamedFieldPuns, TupleSections, ExistentialQuantification #-}
 
 module Data.Bro.Backend
   ( Backend(..)
   , BackendError(..)
+  , Result(..)
   -- , withTable
   -- , insertInto
   -- , selectAll
   , exec
   ) where
 
-import Control.Applicative ((<$))
+import Control.Applicative ((<$), (<$>))
 
-import Data.Bro.Backend.Class (Backend, BackendError)
+import Data.Bro.Backend.Class (Backend, BackendError, BackendResult(..))
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (Row(..), RowId, Statement(..))
 import qualified Data.Bro.Backend.Class as Backend
 
-exec :: Backend b => Statement -> Bro BackendError b ()
-exec (CreateTable name schema) = Backend.insertTable name schema
+data Result = forall r. BackendResult r => Result r
+
+instance BackendResult Result where
+    format (Result r) = format r
+
+exec :: Backend b => Statement -> Bro BackendError b Result
+exec (CreateTable name schema) = Result <$> Backend.insertTable name schema
 -- exec b (InsertInto name pairs) = return $! do
 --     -- FIXME(Sergei): reorder columns to match table schema!
 --     (b', rowId) <- insertInto b name $ Row { rowId = Nothing
