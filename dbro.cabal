@@ -37,6 +37,7 @@ library
     Data.Bro.Backend
     Data.Bro.Backend.Disk
     Data.Bro.Backend.Memory
+    Data.Bro.Backend.Class
     Data.Bro.Monad
     Data.Bro.Types
     Data.Bro.Parser
