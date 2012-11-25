@@ -40,6 +40,7 @@ library
     Data.Bro.Backend.Error
     Data.Bro.Backend.Memory
     Data.Bro.Backend.Result
+    Data.Bro.Backend.Util
     Data.Bro.Monad
     Data.Bro.Types
     Data.Bro.Parser
@@ -53,6 +54,7 @@ library
                   , binary == 0.5.*
                   , directory == 1.2.*
                   , filepath == 1.3.*
+                  , data-default == 0.5.*
 
 test-suite dbro-tests
   hs-source-dirs: tests

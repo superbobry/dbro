@@ -10,13 +10,17 @@ import Data.Map (Map)
 import qualified Data.Map as M
 
 import Control.Monad.Error (throwError)
-import Control.Monad.State (gets, modify)
+import Control.Monad.State (gets)
+import Data.Default (def)
 
 import Data.Bro.Backend.Class (Backend(..), Query(..), withTable)
-import Data.Bro.Backend.Error (BackendError(..)    )
+import Data.Bro.Backend.Error (BackendError(..))
+import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..))
 
-data MemoryBackend = MemoryBackend { memTables :: Map TableName Table }
+data MemoryBackend = MemoryBackend { memTables :: Map TableName Table
+                                   , memData   :: Map TableName [Row]
+                                   }
 
 instance Backend MemoryBackend where
     lookupTable name = M.lookup name <$> gets memTables
@@ -25,34 +29,36 @@ instance Backend MemoryBackend where
         res <- lookupTable name
         case res of
             Just _table -> throwError TableAlreadyExists
-            Nothing     -> modify $ \b@(MemoryBackend { .. }) ->
+            Nothing     -> modifyBackend $ \b@(MemoryBackend { .. }) ->
                 b { memTables = M.insert name table memTables }
       where
         table :: Table
-        table = Table { tabName = name
-                      , tabSchema = schema
-                      , tabData = []
-                      , tabCounter = 1
-                      }
+        table = def { tabName = name
+                    , tabSchema = (schema, rowSize schema)
+                    }
 
     modifyTable name f = withTable name $ \table ->
-        modify $ \b@(MemoryBackend { .. }) ->
+        modifyBackend $ \b@(MemoryBackend { .. }) ->
             b { memTables = M.insert name (f table) memTables }
 
     deleteTable name = withTable name $ \_table ->
-        modify $ \b@(MemoryBackend { .. }) ->
+        modifyBackend $ \b@(MemoryBackend { .. }) ->
             b { memTables = M.delete name memTables }
 
 instance Query MemoryBackend where
-    selectAll name = withTable name (return . tabData)
+    selectAll name = withTable name $ \_table ->
+        M.findWithDefault [] name <$> gets memData
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
-        modifyTable name $ \table@(Table { .. }) ->
-            table { tabData = row { rowId = Just tabCounter } : tabData
-                  , tabCounter = tabCounter + 1
-                  }
-        withTable name (return . tabCounter)
+        tabCounter <- withTable name (return . tabCounter)
+        modifyBackend $ \b@(MemoryBackend { .. }) ->
+            let rows = M.findWithDefault [] name memData
+                row' = row { rowId = Just tabCounter }
+            in b { memData = M.insert name (row':rows) memData }
+        modifyTable name $ \table@(Table { tabSize }) ->
+            table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
+        return $! tabCounter
     insertInto _name _row = error "Inserting existing Row"
 
 makeMemoryBackend :: MemoryBackend
-makeMemoryBackend = MemoryBackend { memTables = M.empty }
+makeMemoryBackend = MemoryBackend { memTables = M.empty, memData = M.empty }

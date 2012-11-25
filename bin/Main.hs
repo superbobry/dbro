@@ -12,11 +12,11 @@ import Data.Bro.Backend (exec)
 import Data.Bro.Backend.Class (Backend(..), Query)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Result (Result(..), format)
-import Data.Bro.Backend.Memory (makeMemoryBackend)
+import Data.Bro.Backend.Disk (makeDiskBackend)
 import Data.Bro.Monad (Bro, runBro)
 
 main :: IO ()
-main = void $ runBro (forever process) makeMemoryBackend where
+main = void $ runBro (forever process) =<< makeDiskBackend "." where
   process :: (Backend b, Query b) => Bro BackendError b ()
   process = do
       l   <- liftIO S.getLine

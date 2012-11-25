@@ -68,7 +68,7 @@ columnValue = varcharValue <|> numberValue where
   numberValue :: Parser ColumnValue
   numberValue = number >>= \result ->
       return $ case result of
-          I i -> IntegerValue i
+          I i -> IntegerValue $ fromIntegral i
           D d -> DoubleValue d
 
 spaced :: Parser a -> Parser a

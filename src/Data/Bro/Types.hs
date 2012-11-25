@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, RecordWildCards, NamedFieldPuns #-}
 
 module Data.Bro.Types
   ( TableName
@@ -12,17 +12,26 @@ module Data.Bro.Types
   , Statement(..)
   ) where
 
-import Control.Applicative ((<$>))
-import Data.Word (Word8)
+import Control.Applicative ((<$>), (<*>))
 import Data.Binary (Binary(..), get, put)
-
+import Data.Maybe (isNothing)
+import Data.Int (Int32)
+import Data.Word (Word8)
 import qualified Data.ByteString.Char8 as S
+
+import Data.Default (Default(..))
 
 type RowId = Int
 
 data Row = Row { rowId   :: Maybe RowId
                , rowData :: ![ColumnValue]
                } deriving (Eq, Show)
+
+instance Binary Row where
+    put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
+    put (Row { .. }) = put rowId >> put rowData
+
+    get = Row <$> get <*> get
 
 type ColumnName = S.ByteString
 data ColumnType = IntegerColumn
@@ -39,10 +48,10 @@ instance Binary ColumnType where
         'i' -> return IntegerColumn
         'd' -> return DoubleColumn
         'v' -> VarcharColumn <$> get
-        _   -> error "Not a valid column type"
+        _   -> error $ "Not a valid column type: " ++ [tag]
 
-data ColumnValue = IntegerValue Integer
-                 | DoubleValue Double
+data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
+                 | DoubleValue  {-# UNPACK #-} !Double
                  | VarcharValue S.ByteString
     deriving (Eq, Show)
 
@@ -55,16 +64,29 @@ instance Binary ColumnValue where
         'i' -> IntegerValue <$> get
         'd' -> DoubleValue <$> get
         'v' -> VarcharValue <$> get
-        _   -> error "Not a valid column value"
+        _   -> error $ "Not a valid column value: " ++ [tag]
 
 type TableName = S.ByteString
 type TableSchema = [(ColumnName, ColumnType)]
 
 data Table = Table { tabName    :: TableName
-                   , tabSchema  :: !TableSchema
-                   , tabData    :: ![Row]
-                   , tabCounter :: RowId
+                   , tabSchema  :: !(TableSchema, Int)
+                   , tabCounter :: {-# UNPACK #-} !RowId
+                   , tabSize    :: {-# UNPACK #-} !Int
                    } deriving (Eq, Show)
+
+instance Binary Table where
+    put (Table { .. }) =
+        put tabName >> put tabSchema >> put tabCounter >> put tabSize
+
+    get = Table <$> get <*> get <*> get <*> get
+
+instance Default Table where
+    def = Table { tabName = S.empty
+                , tabSchema = ([], 0)
+                , tabCounter = 1
+                , tabSize = 0
+                }
 
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName ![(ColumnName, ColumnValue)]
