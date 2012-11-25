@@ -16,8 +16,9 @@ import qualified Data.Bro.Backend.Class as Backend
 
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b Result
 exec s = case s of
-     CreateTable name schema -> Result <$> Backend.insertTable name schema
-     SelectAll name -> Result <$> Backend.selectAll name
-     InsertInto name pairs ->
-         let row = Row { rowId = Nothing, rowData = map snd pairs } in
-         Result <$> Backend.insertInto name row
+    CreateTable name schema -> Result <$> Backend.insertTable name schema
+    SelectAll name -> Result <$> Backend.selectAll name
+    InsertInto name pairs ->
+        -- TODO(Sergei): reorder pairs w.r.t. tableSchema ordering.
+        let row = Row { rowId = Nothing, rowData = map snd pairs } in
+        Result <$> Backend.insertInto name row
