@@ -4,6 +4,8 @@ module Data.Bro.Backend.Util
   ( rowSize
   ) where
 
+import Foreign.Storable (sizeOf)
+
 import Data.Bro.Types (ColumnType(..), TableSchema)
 
 rowSize :: TableSchema -> Int
@@ -12,6 +14,9 @@ rowSize tabSchema = (+ overhead) $! sum $! do
     return $! 1 + case t of  -- +1 for tag value.
         DoubleColumn    -> 25
         IntegerColumn   -> 4
-        VarcharColumn l -> fromIntegral l + 8
+        VarcharColumn l -> fromIntegral l + (sizeOf (undefined :: Int))
   where
-    overhead = 1 + 8 + 8     -- maybe tag + row id + list length.
+    overhead =
+        1 +                            -- maybe tag
+        (sizeOf (undefined :: Int)) +  -- row id
+        (sizeOf (undefined :: Int))    -- list length
