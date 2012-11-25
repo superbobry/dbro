@@ -9,6 +9,7 @@ import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 import Data.Binary (Binary, encodeFile, decodeFile, put, get,
                     encode, decode)
+import Data.Int (Int64)
 import Data.Map (Map)
 import Data.Maybe (isJust)
 import System.Directory (doesFileExist, removeFile)
@@ -18,7 +19,7 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
 
-import Control.Monad.Error (throwError)
+import Control.Monad.Error (throwError, strMsg)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (liftIO)
 import Data.Default (def)
@@ -73,25 +74,29 @@ instance Backend DiskBackend where
         liftIO $! removeFile (diskRoot </> S.unpack tabName)
 
 instance Query DiskBackend where
-    selectAll name = withTable name $ \table@(Table { tabName, tabSize }) -> do
-        diskRoot <- gets diskRoot
-        liftIO $! do
-            bytes <- L.readFile $ diskRoot </> S.unpack tabName
-            return $! go [] bytes table tabSize
-      where
-        go :: [Row] -> L.ByteString -> Table -> Int -> [Row]
-        go xs _bytes _table 0 = reverse xs
-        go xs bytes table@(Table { tabSchema = (_, rowSize0) }) i =
+    selectAll name =
+        withTable name $ \(Table { tabSchema = (_, rowSize0), .. }) -> do
+            diskRoot <- gets diskRoot
+            bytes <- liftIO $! L.readFile (diskRoot </> S.unpack tabName)
             let rowSize1 = fromIntegral rowSize0
-                x = decode $ L.take rowSize1 bytes
-            in x `seq` go (x:xs) (L.drop rowSize1 bytes) table (i - 1)
+            when (L.length bytes `mod` rowSize1 /= 0) $
+                throwError (strMsg "rows blob is not a multiple of row size")
+            return $! go [] bytes rowSize1 tabSize
+      where
+        go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
+        go xs _bytes _rowSize1 0 = reverse xs
+        go xs bytes rowSize1 i =
+            let x = decode $ L.take rowSize1 bytes in
+            x `seq` go (x:xs) (L.drop rowSize1 bytes) rowSize1 (i - 1)
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
-        Table { tabCounter } <- fetchTable name
+        Table { tabCounter, tabSchema = (_, rowSize0) } <- fetchTable name
         diskRoot <- gets diskRoot
-        liftIO $! do
-            let bytes = encode $! row { rowId = Just tabCounter }
-            L.appendFile (diskRoot </> S.unpack name) bytes
+        let bytes = encode $! row { rowId = Just tabCounter }
+            rowSize1 = fromIntegral rowSize0
+        when (L.length bytes /= rowSize1) $
+            throwError (strMsg "row chunk is not equal to row size")
+        liftIO $! L.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
