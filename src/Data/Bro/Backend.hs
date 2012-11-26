@@ -1,4 +1,4 @@
-{-# LANGUAGE NamedFieldPuns, TupleSections #-}
+{-# LANGUAGE NamedFieldPuns, BangPatterns #-}
 
 module Data.Bro.Backend
   ( Result(..)
@@ -6,19 +6,44 @@ module Data.Bro.Backend
   ) where
 
 import Control.Applicative ((<$>))
+import qualified Data.ByteString.Char8 as S
+import qualified Data.Map as M
 
-import Data.Bro.Backend.Class (Backend, Query(..))
+import Control.Monad.Error (throwError)
+
+import Data.Bro.Backend.Class (Backend, Query(..), withTable)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Result (Result(..))
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types (Row(..), Statement(..))
+import Data.Bro.Types (Table(..), TableSchema, Row(..),
+                       ColumnName, ColumnType(..), ColumnValue(..),
+                       Statement(..))
 import qualified Data.Bro.Backend.Class as Backend
 
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b Result
 exec s = case s of
     CreateTable name schema -> Result <$> Backend.insertTable name schema
     SelectAll name -> Result <$> Backend.selectAll name
-    InsertInto name pairs ->
-        -- TODO(Sergei): reorder pairs w.r.t. tableSchema ordering.
-        let row = Row { rowId = Nothing, rowData = map snd pairs } in
+    InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
+        remapped <- remap (fst tabSchema) pairs
+        let row = Row { rowId = Nothing, rowData = remapped }
         Result <$> Backend.insertInto name row
+
+remap :: Backend b
+      => TableSchema
+      -> [(ColumnName, ColumnValue)]
+      -> Bro BackendError b [ColumnValue]
+remap schema = go schema [] . M.fromList where
+  go ((name, t):rest) !acc m = case M.lookup name m of
+      Just value | value `matches` t -> go rest (value:acc) m
+      Just value -> throwError $ ColumnTypeMismatch value t
+      Nothing    -> throwError $ ColumnValueMissing name
+  go [] acc _m = return $! reverse acc
+
+matches :: ColumnValue -> ColumnType -> Bool
+matches (IntegerValue _v) IntegerColumn = True
+matches (DoubleValue _d) DoubleColumn = True
+matches (VarcharValue s) (VarcharColumn l) =
+    -- FIXME(Sergei): make this a separate case, InvalidLengthSomething?
+    S.length s <= fromIntegral l
+matches _value _type = False

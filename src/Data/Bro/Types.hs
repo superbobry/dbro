@@ -58,7 +58,7 @@ data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
 instance Binary ColumnValue where
     put (IntegerValue v) = put 'i' >> put v
     put (DoubleValue d)  = put 'd' >> put d
-    put (VarcharValue t) = put 'v' >> put t
+    put (VarcharValue s) = put 'v' >> put s
 
     get = get >>= \tag -> case tag of
         'i' -> IntegerValue <$> get

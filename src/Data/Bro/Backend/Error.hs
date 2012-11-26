@@ -4,8 +4,12 @@ module Data.Bro.Backend.Error
 
 import Control.Monad.Error (Error(..))
 
+import Data.Bro.Types (ColumnName, ColumnType, ColumnValue)
+
 data BackendError = TableDoesNotExist
                   | TableAlreadyExists
+                  | ColumnTypeMismatch ColumnValue ColumnType
+                  | ColumnValueMissing ColumnName
                   | UnknownError String
     deriving Show
 
