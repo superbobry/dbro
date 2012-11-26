@@ -1,11 +1,10 @@
 {-# LANGUAGE NamedFieldPuns, BangPatterns #-}
 
 module Data.Bro.Backend
-  ( Result(..)
-  , exec
+  ( exec
   ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<$))
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Map as M
 
@@ -13,21 +12,22 @@ import Control.Monad.Error (throwError)
 
 import Data.Bro.Backend.Class (Backend, Query(..), withTable)
 import Data.Bro.Backend.Error (BackendError(..))
-import Data.Bro.Backend.Result (Result(..))
+import Data.Bro.Backend.Result (BackendResult(..))
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (Table(..), TableSchema, Row(..),
                        ColumnName, ColumnType(..), ColumnValue(..),
                        Statement(..))
 import qualified Data.Bro.Backend.Class as Backend
 
-exec :: (Query b, Backend b) => Statement -> Bro BackendError b Result
+exec :: (Query b, Backend b) => Statement -> Bro BackendError b BackendResult
 exec s = case s of
-    CreateTable name schema -> Result <$> Backend.insertTable name schema
-    SelectAll name -> Result <$> Backend.selectAll name
+    CreateTable name schema -> Created <$ Backend.insertTable name schema
+    SelectAll name -> withTable name $ \table ->
+        Selected table <$> Backend.selectAll name
     InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
         remapped <- remap (fst tabSchema) pairs
         let row = Row { rowId = Nothing, rowData = remapped }
-        Result <$> Backend.insertInto name row
+        Inserted <$> Backend.insertInto name row
 
 remap :: Backend b
       => TableSchema
