@@ -86,20 +86,32 @@ instance Query DiskBackend where
         go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
         go xs _bytes _rowSize1 0 = reverse xs
         go xs bytes rowSize1 i =
-            let x = decode $ L.take rowSize1 bytes in
+            let x = decode . unwrap $ L.take rowSize1 bytes in
             x `seq` go (x:xs) (L.drop rowSize1 bytes) rowSize1 (i - 1)
+
+        unwrap :: L.ByteString -> L.ByteString
+        unwrap = L.tail . L.dropWhile (/= 0xff)
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabSchema = (_, rowSize0) } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = encode $! row { rowId = Just tabCounter }
-            rowSize1 = fromIntegral rowSize0
-        when (L.length bytes /= rowSize1) $
-            throwError (strMsg "row chunk is not equal to row size")
+        let bytes = wrap rowSize0 . encode $! row { rowId = Just tabCounter }
         liftIO $! L.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
+      where
+        -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
+        -- where @\xff@ starts data segment. A given chunk is expected to
+        -- be shorter than @n - 1@ to fit the @\xff@ tag.
+        wrap :: Int -> L.ByteString -> L.ByteString
+        wrap n s =
+            let len = fromIntegral $ L.length s
+                pad = fromIntegral $ n - 1 - len
+            in case compare len (n - 1) of
+                EQ -> L.cons 0xff s
+                LT -> L.append (L.replicate pad 0) $ L.cons 0xff s
+                GT -> error "row chunk size overflow"
     insertInto _name _row = error "Inserting existing Row"
 
 makeDiskBackend :: FilePath -> IO DiskBackend
