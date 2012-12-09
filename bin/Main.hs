@@ -11,7 +11,7 @@ import Control.Monad.Trans (liftIO)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.Csv (ToField(..), ToRecord(..))
 import qualified Data.ByteString.Char8 as S
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.Csv as Csv
 import qualified Data.Vector as V
 
@@ -43,23 +43,21 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
           Left err -> throwError (strMsg err)
           Right s  -> exec s >>= liftIO . putStrLnLn . formatResult
 
-  putStrLnLn :: S.ByteString -> IO ()
-  putStrLnLn s = S.putStrLn s >> IO.putChar '\n'
+  putStrLnLn :: L.ByteString -> IO ()
+  putStrLnLn s = L.putStrLn s >> IO.putChar '\n'
 
   handleError :: Backend b => BackendError -> Bro BackendError b ()
   handleError = liftIO . putStrLnLn . formatError
 
-  formatError :: BackendError -> S.ByteString
-  formatError = S.pack . show  -- FIXME(Sergei): descriptive error messages.
+  formatError :: BackendError -> L.ByteString
+  formatError = L.pack . show  -- FIXME(Sergei): descriptive error messages.
 
-  formatResult :: BackendResult -> S.ByteString
+  formatResult :: BackendResult -> L.ByteString
   formatResult Created = "OK"
-  formatResult (Inserted rowId0) = S.pack $ printf "OK %i" rowId0
+  formatResult (Inserted rowId0) = L.pack $ printf "OK %i" rowId0
   formatResult (Selected (Table { tabSchema = (schema, _) }) rows) =
       -- FIXME(Sergei): switch to 'Data.Vector' for [Row]?
-      S.concat $
-      map (S.concat . L.toChunks) $
-      filter (not . L.null) [header, body]
+      L.concat $ filter (not . L.null) [header, body]
     where
       header :: L.ByteString
       header = Csv.encode $ V.singleton $ do

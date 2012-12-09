@@ -23,7 +23,7 @@ executable dbro
   build-depends:    base
                   , bytestring == 0.10.*
                   , vector == 0.10.*
-                  , cassava == 0.2.0.*
+                  , cassava == 0.2.*
                   , attoparsec == 0.10.2.*
                   , mtl == 2.1.*
                   , dbro
