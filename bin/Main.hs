@@ -57,10 +57,12 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
   formatResult (Inserted rowId0) = L.pack $ printf "OK %i" rowId0
   formatResult (Selected (Table { tabSchema = (schema, _) }) rows) =
       -- FIXME(Sergei): switch to 'Data.Vector' for [Row]?
-      L.concat $ filter (not . L.null) [header, body]
+      if L.null body
+      then header
+      else L.append header . L.cons '\n' $ L.init body
     where
       header :: L.ByteString
-      header = Csv.encode $ V.singleton $ do
+      header = L.fromChunks . return . S.intercalate "," $ do
           (name, t) <- schema
           return $! S.append name $ case t of
               IntegerColumn   -> "(int)"
