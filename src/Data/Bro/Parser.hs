@@ -57,8 +57,14 @@ columnType :: Parser ColumnType
 columnType = choice
              [ stringCI "int" *> pure IntegerColumn
              , stringCI "double" *> pure DoubleColumn
-             , VarcharColumn <$> (token "varchar" *> between '(' ')' decimal)
+             , varcharType
              ]
+  where
+    varcharType :: Parser ColumnType
+    varcharType = VarcharColumn <$> do
+        token "varchar"
+        -- Note(Sergei): we default 'varchar' to 'varchar(MAX).
+        between '(' ')' decimal <|> return maxBound
 
 columnValue :: Parser ColumnValue
 columnValue = varcharValue <|> numberValue where
