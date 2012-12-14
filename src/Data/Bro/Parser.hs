@@ -63,7 +63,8 @@ expr = choice [ Const <$> columnValue
         return $ con e1 e2
 
 projection :: Parser Projection
-projection = token "*" *> pure (Projection [])
+projection =
+    (token "*" *> pure (Projection [])) <|> Projection <$> listOf1 expr
 
 condition :: Parser Condition
 condition = do
