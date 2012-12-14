@@ -14,11 +14,11 @@ import qualified Data.ByteString.Char8 as S
 
 import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), choice, takeWhile,
                                          sepBy1, number, decimal, char, stringCI,
-                                         skipSpace)
+                                         skipSpace, option)
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Projection(..), Statement(..))
+                       Projection(..), Condition(..), Expr(..), Statement(..))
 
 statement :: Parser Statement
 statement = choice [selectAll, createTable, insertInto]
@@ -38,9 +38,48 @@ statement = choice [selectAll, createTable, insertInto]
         return $ InsertInto table (zip columns values)
 
     selectAll = do
-        tokens ["select", "*", "from"]
+        token "select"
+        p <- projection
+        token "from"
         table <- tableName
-        return $ Select table (Projection []) Nothing
+        c <- option Nothing $ token "where" *> (Just <$> condition)
+        return $ Select table p c
+
+expr :: Parser Expr
+expr = choice [ Const <$> columnValue
+              , Field <$> columnName
+              , token "-" *> (Negate <$> expr)
+              , binOp "+" Add
+              , binOp "-" Sub
+              , binOp "*" Multiply
+              , binOp "/" Divide
+              ]
+  where
+    binOp :: S.ByteString -> (Expr -> Expr -> Expr) -> Parser Expr
+    binOp op con = do
+        e1 <- expr
+        token op
+        e2 <- expr
+        return $ con e1 e2
+
+projection :: Parser Projection
+projection = token "*" *> pure (Projection [])
+
+condition :: Parser Condition
+condition = do
+    field <- columnName
+    choice [ token "=" *> (Equals field <$> expr)
+           , token "!=" *> (NotEquals field <$> expr)
+           , token ">" *> (GreaterThan field <$> expr)
+           , token "<" *> (LowerThan field <$> expr)
+           , token ">=" *> (GreaterThan `orEquals` field <$> expr)
+           , token "<=" *> (LowerThan `orEquals` field <$> expr)
+           , token "and" *> (And <$> condition <*> condition)
+           , token "or" *> (Or <$> condition <*> condition)
+           ]
+  where
+    orEquals :: (ColumnName -> Expr -> Condition) -> ColumnName -> Expr -> Condition
+    orEquals con field expr0 = con field expr0 `Or` Equals field expr0
 
 tableName :: Parser TableName
 tableName = word

@@ -10,6 +10,8 @@ module Data.Bro.Types
   , ColumnType(..)
   , ColumnValue(..)
   , Projection(..)
+  , Condition(..)
+  , Expr(..)
   , Statement(..)
   ) where
 
@@ -99,7 +101,12 @@ data Expr = Const ColumnValue
           | Divide Expr Expr
     deriving (Eq, Show)
 
-data Condition = Condition
+data Condition = Equals ColumnName Expr
+               | NotEquals ColumnName Expr
+               | GreaterThan ColumnName Expr
+               | LowerThan ColumnName Expr
+               | Or Condition Condition
+               | And Condition Condition
     deriving (Eq, Show)
 
 newtype Projection = Projection [Expr] deriving (Eq, Show)
