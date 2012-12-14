@@ -17,7 +17,7 @@ import Test.QuickCheck (Arbitrary(..), Property, Gen,
 
 import Data.Bro.Parser (statement)
 import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..),
-                       TableSchema, Statement(..))
+                       TableSchema, Projection(..), Statement(..))
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
@@ -51,7 +51,8 @@ instance Arbitrary ColumnValue where
 instance Arbitrary Statement where
     arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
                       , InsertInto <$> arbitrary <*> listOf1 arbitrary
-                      , SelectAll <$> arbitrary
+                        -- FIXME(Sergei): generate proper queries here!
+                      , Select <$> arbitrary <*> pure (Projection []) <*> pure Nothing
                       ]
 
 class ToSQL a where
@@ -83,7 +84,7 @@ instance ToSQL Statement where
         (S.unpack table)
         (S.unpack $! S.intercalate ", " names)
         (S.unpack  . S.intercalate ", " $ map toSQL values)
-    toSQL (SelectAll table) =
+    toSQL (Select table _projection _condition) =
         S.pack . printf "SELECT * FROM %s;" $! S.unpack table
 
 tests :: Test

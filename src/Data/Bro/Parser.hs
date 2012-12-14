@@ -18,7 +18,7 @@ import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), choice, takeWhile,
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Statement(..))
+                       Projection(..), Statement(..))
 
 statement :: Parser Statement
 statement = choice [selectAll, createTable, insertInto]
@@ -31,7 +31,7 @@ statement = choice [selectAll, createTable, insertInto]
 
     insertInto = do
         tokens ["insert", "into"]
-        table <- word
+        table <- tableName
         columns <- listOf1 columnName
         token "values"
         values <- listOf1 columnValue
@@ -39,7 +39,8 @@ statement = choice [selectAll, createTable, insertInto]
 
     selectAll = do
         tokens ["select", "*", "from"]
-        SelectAll <$> tableName
+        table <- tableName
+        return $ Select table (Projection []) Nothing
 
 tableName :: Parser TableName
 tableName = word

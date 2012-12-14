@@ -16,13 +16,15 @@ import Data.Bro.Backend.Result (BackendResult(..))
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (Table(..), TableSchema, Row(..),
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Statement(..))
+                       Projection(..), Statement(..))
 import qualified Data.Bro.Backend.Class as Backend
 
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b BackendResult
 exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
-    SelectAll name -> withTable name $ \table ->
+    -- FIXME(Sergei): this is only a special case, update to a more generic
+    -- version!
+    Select name (Projection []) Nothing -> withTable name $ \table ->
         Selected table <$> Backend.selectAll name
     InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
         remapped <- remap (fst tabSchema) pairs

@@ -9,6 +9,7 @@ module Data.Bro.Types
   , ColumnName
   , ColumnType(..)
   , ColumnValue(..)
+  , Projection(..)
   , Statement(..)
   ) where
 
@@ -88,7 +89,22 @@ instance Default Table where
                 , tabSize = 0
                 }
 
+-- FIXME(Sergei): add comparisons here!
+data Expr = Const ColumnValue
+          | Field ColumnName
+          | Negate Expr
+          | Add Expr Expr
+          | Sub Expr Expr
+          | Multiply Expr Expr
+          | Divide Expr Expr
+    deriving (Eq, Show)
+
+data Condition = Condition
+    deriving (Eq, Show)
+
+newtype Projection = Projection [Expr] deriving (Eq, Show)
+
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName ![(ColumnName, ColumnValue)]
-               | SelectAll TableName
+               | Select TableName Projection (Maybe Condition)
     deriving (Eq, Show)
