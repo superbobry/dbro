@@ -6,15 +6,14 @@ module Data.Bro.Parser.Tests
   ) where
 
 import Control.Applicative ((<$>), (<*>), pure)
+import Text.Printf (printf)
+import qualified Data.ByteString.Char8 as S
 
-import Data.Attoparsec.Text (parseOnly)
-import Data.Text.Format (format)
+import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck (Arbitrary(..), Property, Gen,
                         oneof, listOf1, elements, printTestCase)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as LT
 
 import Data.Bro.Parser (statement)
 import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..),
@@ -22,10 +21,10 @@ import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..),
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
-symbol :: Gen T.Text
-symbol = T.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'])
+symbol :: Gen S.ByteString
+symbol = S.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'])
 
-instance Arbitrary T.Text where
+instance Arbitrary S.ByteString where
     arbitrary = symbol  -- restrict 'Text' to ASCII subset.
 
 instance Arbitrary Row where
@@ -56,34 +55,36 @@ instance Arbitrary Statement where
                       ]
 
 class ToSQL a where
-    toSQL :: a -> LT.Text
+    toSQL :: a -> S.ByteString
 
 instance ToSQL ColumnType where
     toSQL IntegerColumn = "int"
     toSQL DoubleColumn = "double"
-    toSQL (VarcharColumn l) = format "varchar({})" [show l]
+    toSQL (VarcharColumn l) = S.pack $ printf "varchar(%s)" (show l)
 
 instance ToSQL ColumnValue where
-    toSQL (IntegerValue x) = LT.pack $ show x
-    toSQL (DoubleValue d) = LT.pack $ show d
-    toSQL (VarcharValue t) = LT.pack $ show t
+    toSQL (IntegerValue x) = S.pack $ show x
+    toSQL (DoubleValue d) = S.pack $ show d
+    toSQL (VarcharValue t) = S.pack $ show t
 
 instance ToSQL TableSchema where
-    toSQL schema = LT.intercalate ", " $ do
+    toSQL schema = S.intercalate ", " $ do
         (name, t) <- schema
-        return $! format "{} {}" [LT.fromStrict name, toSQL t]
+        return . S.pack $! printf "%s %s" (S.unpack name) (S.unpack $! toSQL t)
 
 instance ToSQL Statement where
     toSQL (CreateTable table schema) =
-        format "CREATE TABLE {}({});" [LT.fromStrict table, toSQL schema]
+        S.pack $! printf "CREATE TABLE %s(%s);"
+        (S.unpack table)
+        (S.unpack $! toSQL schema)
     toSQL (InsertInto table pairs) =
-        let (names, values) = unzip pairs in
-        format "INSERT INTO {}({}) VALUES ({});"
-        [ LT.fromStrict table
-        , LT.intercalate ", " $ map LT.fromStrict names
-        , LT.intercalate ", " $ map toSQL values
-        ]
-    toSQL (SelectAll table) = format "SELECT * FROM {};" [LT.fromStrict table]
+        let (names, values) = unzip pairs in S.pack $!
+        printf "INSERT INTO %s(%s) VALUES (%s);"
+        (S.unpack table)
+        (S.unpack $! S.intercalate ", " names)
+        (S.unpack  . S.intercalate ", " $ map toSQL values)
+    toSQL (SelectAll table) =
+        S.pack . printf "SELECT * FROM %s;" $! S.unpack table
 
 tests :: Test
 tests = testGroup "Data.Bro.Parser.Tests"
@@ -92,12 +93,12 @@ tests = testGroup "Data.Bro.Parser.Tests"
 
 prop_statementParseUnparse :: Statement -> Property
 prop_statementParseUnparse s =
-    printTestCase ("SQL: " ++ T.unpack sql) $
+    printTestCase ("SQL: " ++ S.unpack sql) $
     printTestCase ("AST: " ++ show s) $
     printTestCase ("RES: " ++ show result) $
     case result of
         Left _msg -> False
         Right s'  -> s == s'
   where
-    sql = LT.toStrict $ toSQL s
+    sql = toSQL s
     result = parseOnly statement sql

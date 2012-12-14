@@ -67,8 +67,7 @@ test-suite dbro-tests
 
   build-depends:    base
                   , attoparsec == 0.10.2.*
-                  , text == 0.11.2.*
-                  , text-format == 0.3.*
+                  , bytestring == 0.10.*
                   , test-framework             == 0.6.*
                   , test-framework-quickcheck2 == 0.2.*
                   , test-framework-hunit       == 0.2.*
