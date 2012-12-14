@@ -21,7 +21,7 @@ import Data.Bro.Types (TableName, TableSchema,
                        Projection(..), Condition(..), Expr(..), Statement(..))
 
 statement :: Parser Statement
-statement = choice [selectAll, createTable, insertInto]
+statement = choice [selectFrom, createTable, insertInto, update]
             <* skipSpace
             <* char ';'
   where
@@ -37,13 +37,21 @@ statement = choice [selectAll, createTable, insertInto]
         values <- listOf1 columnValue
         return $ InsertInto table (zip columns values)
 
-    selectAll = do
+    selectFrom = do
         token "select"
         p <- projection
         token "from"
         table <- tableName
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Select table p c
+
+    update = do
+        tokens ["update", "table"]
+        table <- tableName
+        token "set"
+        bindings <- listOf1 $ (, ) <$> columnName <* token "=" <*> expr
+        c <- option Nothing $ token "where" *> (Just <$> condition)
+        return $ Update table bindings c
 
 expr :: Parser Expr
 expr = choice [ Const <$> columnValue

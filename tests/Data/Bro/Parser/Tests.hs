@@ -16,8 +16,9 @@ import Test.QuickCheck (Arbitrary(..), Property, Gen,
                         oneof, listOf1, elements, printTestCase)
 
 import Data.Bro.Parser (statement)
-import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..),
-                       TableSchema, Projection(..), Statement(..))
+import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..), ColumnName,
+                       TableSchema, Projection(..), Expr(..),
+                       Condition(..), Statement(..))
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
@@ -29,6 +30,28 @@ instance Arbitrary S.ByteString where
 
 instance Arbitrary Row where
     arbitrary = Row Nothing <$> listOf1 arbitrary
+
+instance Arbitrary Projection where
+    arbitrary = Projection <$> listOf1 arbitrary
+
+instance Arbitrary Expr where
+    arbitrary = oneof [ Const <$> arbitrary
+                      , Field <$> arbitrary
+                      , Negate <$> arbitrary
+                      , Add <$> arbitrary <*> arbitrary
+                      , Sub <$> arbitrary <*> arbitrary
+                      , Multiply <$> arbitrary <*> arbitrary
+                      , Divide <$> arbitrary <*> arbitrary
+                      ]
+
+instance Arbitrary Condition where
+    arbitrary = oneof [ Equals <$> arbitrary <*> arbitrary
+                      , NotEquals <$> arbitrary <*> arbitrary
+                      , GreaterThan <$> arbitrary <*> arbitrary
+                      , LowerThan <$> arbitrary <*> arbitrary
+                      , Or <$> arbitrary <*> arbitrary
+                      , And <$> arbitrary <*> arbitrary
+                      ]
 
 instance Arbitrary ColumnType where
     arbitrary = oneof [ pure IntegerColumn
@@ -51,8 +74,8 @@ instance Arbitrary ColumnValue where
 instance Arbitrary Statement where
     arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
                       , InsertInto <$> arbitrary <*> listOf1 arbitrary
-                        -- FIXME(Sergei): generate proper queries here!
-                      , Select <$> arbitrary <*> pure (Projection []) <*> pure Nothing
+                      , Select <$> arbitrary <*> arbitrary <*> arbitrary
+                      , Update <$> arbitrary <*> listOf1 arbitrary <*> arbitrary
                       ]
 
 class ToSQL a where
@@ -73,19 +96,68 @@ instance ToSQL TableSchema where
         (name, t) <- schema
         return . S.pack $! printf "%s %s" (S.unpack name) (S.unpack $! toSQL t)
 
+instance ToSQL Expr where
+    toSQL (Const v) = toSQL v
+    toSQL (Field name) = name
+    toSQL (Negate e) = S.cons '-' (toSQL e)
+    toSQL (Add e1 e2) = S.concat [toSQL e1, " + ", toSQL e2]
+    toSQL (Sub e1 e2) = S.concat [toSQL e1, " - ", toSQL e2]
+    toSQL (Multiply e1 e2) = S.concat [toSQL e1, " * ", toSQL e2]
+    toSQL (Divide e1 e2) = S.concat [toSQL e1, " / ", toSQL e2]
+
+instance ToSQL Projection where
+    toSQL (Projection []) = "*"
+    toSQL (Projection exprs) = S.intercalate ", " $ map toSQL exprs
+
+instance ToSQL Condition where
+    toSQL (Equals name e) = S.concat [name, " = ", toSQL e]
+    toSQL (NotEquals name e) = S.concat [name, " != ", toSQL e]
+    toSQL (GreaterThan name e) = S.concat [name, " > ", toSQL e]
+    toSQL (LowerThan name e) = S.concat [name, " < ", toSQL e]
+    toSQL (And c1 c2) = S.concat [toSQL c1, " && ", toSQL c2]
+    toSQL (Or c1 c2) = S.concat [toSQL c1, " || ", toSQL c2]
+
+instance ToSQL [(ColumnName, Expr)] where
+    toSQL [] = error "impossible"
+    toSQL bs = S.intercalate ", " $! do
+        (name, expr) <- bs
+        return $! S.concat [name, " = ", toSQL expr]
+
 instance ToSQL Statement where
     toSQL (CreateTable table schema) =
         S.pack $! printf "CREATE TABLE %s(%s);"
         (S.unpack table)
         (S.unpack $! toSQL schema)
+    toSQL (Select table projection Nothing) =
+        S.pack $! printf "SELECT %s FROM %s;"
+        (S.unpack table)
+        (S.unpack $! toSQL projection)
+    toSQL (Select table projection (Just condition)) =
+        S.pack $! printf "SELECT %s FROM %s WHERE %s;"
+        (S.unpack table)
+        (S.unpack $! toSQL projection)
+        (S.unpack $! toSQL condition)
+    toSQL (Update table bindings Nothing) =
+        S.pack $! printf "UPDATE %s SET %s WHERE %s;"
+        (S.unpack table)
+        (S.unpack $! toSQL bindings)
+    toSQL (Update table bindings (Just condition)) =
+        S.pack $! printf "UPDATE %s SET %s WHERE %s;"
+        (S.unpack table)
+        (S.unpack $! toSQL bindings)
+        (S.unpack $! toSQL condition)
+    toSQL (Delete table Nothing) =
+        S.pack $! printf "DELETE FROM %s;" (S.unpack table)
+    toSQL (Delete table (Just condition)) =
+        S.pack $! printf "DELETE FROM %s WHERE %s;"
+        (S.unpack table)
+        (S.unpack $! toSQL condition)
     toSQL (InsertInto table pairs) =
         let (names, values) = unzip pairs in S.pack $!
         printf "INSERT INTO %s(%s) VALUES (%s);"
         (S.unpack table)
         (S.unpack $! S.intercalate ", " names)
         (S.unpack  . S.intercalate ", " $ map toSQL values)
-    toSQL (Select table _projection _condition) =
-        S.pack . printf "SELECT * FROM %s;" $! S.unpack table
 
 tests :: Test
 tests = testGroup "Data.Bro.Parser.Tests"
