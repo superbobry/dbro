@@ -1,8 +1,12 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 
 module Data.Bro.Parser
   ( statement
-  , columnValue
+
+#ifdef DEBUG
+  , projection
+  , condition
+#endif
   ) where
 
 import Prelude hiding (takeWhile)
@@ -12,9 +16,9 @@ import Control.Monad (void)
 import Data.Char (isAlphaNum)
 import qualified Data.ByteString.Char8 as S
 
-import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), choice, takeWhile,
-                                         sepBy1, number, decimal, char, stringCI,
-                                         skipSpace, option)
+import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
+                                         takeWhile, sepBy1, number, decimal,
+                                         char, stringCI, skipSpace, option)
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
@@ -45,16 +49,21 @@ statement = choice [selectFrom, createTable, insertInto, update]
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Select table p c
 
-    update = do
-        tokens ["update", "table"]
+    update = as "update" $! do
+        token "update"
         table <- tableName
         token "set"
-        bindings <- listOf1 $ (, ) <$> columnName <* token "=" <*> expr
+        bindings <- listOf1 $ do
+            name <- columnName
+            token "="
+            e <- expr
+            return $ (name, e)
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Update table bindings c
 
 expr :: Parser Expr
-expr = choice [ Const <$> columnValue
+expr = as "expr" $!
+       choice [ Const <$> columnValue
               , Field <$> columnName
               , token "-" *> (Negate <$> expr)
               , binOp "+" Add
@@ -72,10 +81,11 @@ expr = choice [ Const <$> columnValue
 
 projection :: Parser Projection
 projection =
+    as "projection" $!
     (token "*" *> pure (Projection [])) <|> Projection <$> listOf1 expr
 
 condition :: Parser Condition
-condition = do
+condition = as "condition" $! do
     field <- columnName
     choice [ token "=" *> (Equals field <$> expr)
            , token "!=" *> (NotEquals field <$> expr)
@@ -149,3 +159,7 @@ between open close p = char open *> spaced p <* char close
 listOf1 :: Parser a -> Parser [a]
 listOf1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
 {-# INLINE listOf1 #-}
+
+as :: String -> Parser a -> Parser a
+as = flip (<?>)
+{-# INLINE as #-}
