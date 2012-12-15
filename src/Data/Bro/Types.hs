@@ -122,11 +122,14 @@ data Statement = CreateTable TableName TableSchema
 class Simple a where
     simplify :: a -> a
 
-
 instance Simple Expr where
     simplify (Negate (Const (DoubleValue d))) = Const (DoubleValue $ -d)
     simplify (Negate (Const (IntegerValue i))) = Const (IntegerValue $ -i)
     simplify (Negate (Negate e)) = simplify e
+    simplify (Add e1 e2) = Add (simplify e1) (simplify e2)
+    simplify (Sub e1 e2) = Sub (simplify e1) (simplify e2)
+    simplify (Multiply e1 e2) = Multiply (simplify e1) (simplify e2)
+    simplify (Divide e1 e2) = Divide (simplify e1) (simplify e2)
     simplify e = e
 
 instance Simple Projection where

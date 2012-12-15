@@ -10,8 +10,6 @@ module Data.Bro.Parser
 #endif
   ) where
 
-import Prelude hiding (takeWhile)
-
 import Control.Applicative ((<$>), (<*>), (<*), (*>), (<|>), pure)
 import Control.Monad (void)
 import Data.Char (isAlphaNum)
@@ -23,7 +21,8 @@ import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
 
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Projection(..), Condition(..), Expr(..), Statement(..))
+                       Projection(..), Condition(..), Expr(..), Statement(..),
+                       simplify)
 
 statement :: Parser Statement
 statement = choice [selectFrom, createTable, insertInto, update]
@@ -63,22 +62,20 @@ statement = choice [selectFrom, createTable, insertInto, update]
         return $ Update table bindings c
 
 expr :: Parser Expr
-expr = as "expr" $!
-       choice [ binOp "+" Add
-              , binOp "-" Sub
-              , binOp "*" Multiply
-              , binOp "/" Divide
-              , Const <$> columnValue
-              , Field <$> columnName
-              , token "-" *> (Negate <$> expr)
-              ]
+expr = as "expr" $! simplify <$> do
+    left <- choice [ Const <$> columnValue
+                   , Field <$> columnName
+                   , token "-" *> (Negate <$> expr)
+                   ]
+    option left $ choice [ binOp "+" (Add left)
+                         , binOp "-" (Sub left)
+                         , binOp "*" (Multiply left)
+                         , binOp "/" (Divide left)
+                         ]
+
   where
-    binOp :: S.ByteString -> (Expr -> Expr -> Expr) -> Parser Expr
-    binOp op con = do
-        e1 <- expr
-        token op
-        e2 <- expr
-        return $ con e1 e2
+    binOp :: S.ByteString -> (Expr -> Expr) -> Parser Expr
+    binOp op con = token op *> (con <$> expr)
 
 projection :: Parser Projection
 projection =
@@ -87,7 +84,7 @@ projection =
     Projection <$> expr `sepBy1` (char ',' <* skipSpace)
 
 condition :: Parser Condition
-condition = as "condition" $! do
+condition = as "condition" $! simplify <$> do
     field <- columnName
     choice [ token "=" *> (Equals field <$> expr)
            , token "!=" *> (NotEquals field <$> expr)

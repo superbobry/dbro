@@ -48,7 +48,7 @@ instance Arbitrary Expr where
                       ]
 
         compound :: Word8 -> Gen Expr
-        compound _ = basic
+        compound 0 = basic
         compound n = oneof [ Add <$> next <*> next
                            , Negate <$> next
                            , Sub <$> next <*> next
