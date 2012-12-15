@@ -10,6 +10,7 @@ module Data.Bro.Parser.Tests
   ) where
 
 import Control.Applicative ((<$>), (<*>), pure)
+import Data.Word (Word8)
 import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as S
 
@@ -19,10 +20,10 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck (Arbitrary(..), Property, Gen,
                         oneof, listOf1, elements, printTestCase)
 
-import Data.Bro.Parser (statement, projection, condition)
+import Data.Bro.Parser (statement, projection, condition, expr)
 import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..), ColumnName,
                        TableSchema, Projection(..), Expr(..),
-                       Condition(..), Statement(..))
+                       Condition(..), Statement(..), simplify)
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
@@ -30,32 +31,47 @@ symbol :: Gen S.ByteString
 symbol = S.pack <$> listOf1 (elements $ ['a'..'z'] ++ ['A'..'Z'])
 
 instance Arbitrary S.ByteString where
-    arbitrary = symbol  -- restrict 'Text' to ASCII subset.
+    arbitrary = symbol  -- restrict 'ByteString' to ASCII subset.
 
 instance Arbitrary Row where
     arbitrary = Row Nothing <$> listOf1 arbitrary
 
 instance Arbitrary Projection where
-    arbitrary = Projection <$> listOf1 arbitrary
+    arbitrary = simplify . Projection <$> listOf1 arbitrary
 
 instance Arbitrary Expr where
-    arbitrary = oneof [ Const <$> arbitrary
+    arbitrary = simplify <$> (compound =<< arbitrary)
+      where
+        basic :: Gen Expr
+        basic = oneof [ Const <$> arbitrary
                       , Field <$> arbitrary
-                      , Negate <$> arbitrary
-                      -- , Add <$> arbitrary <*> arbitrary
-                      -- , Sub <$> arbitrary <*> arbitrary
-                      -- , Multiply <$> arbitrary <*> arbitrary
-                      -- , Divide <$> arbitrary <*> arbitrary
                       ]
 
+        compound :: Word8 -> Gen Expr
+        compound _ = basic
+        compound n = oneof [ Add <$> next <*> next
+                           , Negate <$> next
+                           , Sub <$> next <*> next
+                           , Multiply <$> next <*> next
+                           , Divide <$> next <*> next
+                           ]
+            where next = oneof [basic, compound (n `div` 2)]
+
 instance Arbitrary Condition where
-    arbitrary = oneof [ Equals <$> arbitrary <*> arbitrary
-                      , NotEquals <$> arbitrary <*> arbitrary
-                      , GreaterThan <$> arbitrary <*> arbitrary
-                      , LowerThan <$> arbitrary <*> arbitrary
-                      -- , Or <$> arbitrary <*> arbitrary
-                      -- , And <$> arbitrary <*> arbitrary
-                      ]
+    arbitrary = simplify <$> (compound =<< arbitrary) where
+      basic :: Gen Condition
+      basic = oneof [ Equals <$> arbitrary <*> arbitrary
+                    , NotEquals <$> arbitrary <*> arbitrary
+                    , GreaterThan <$> arbitrary <*> arbitrary
+                    , LowerThan <$> arbitrary <*> arbitrary
+                    ]
+
+      compound :: Word8 -> Gen Condition
+      compound _ = basic
+      compound n = oneof [ Or <$> next <*> next
+                         , And <$> next <*> next
+                         ]
+        where next = oneof [basic, compound (n `div` 2)]
 
 instance Arbitrary ColumnType where
     arbitrary = oneof [ pure IntegerColumn
@@ -76,7 +92,8 @@ instance Arbitrary ColumnValue where
                        (truncate <$> (arbitrary :: Gen Double) :: Gen Int)
 
 instance Arbitrary Statement where
-    arbitrary = oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
+    arbitrary = simplify <$>
+                oneof [ CreateTable <$> arbitrary <*> listOf1 arbitrary
                       , InsertInto <$> arbitrary <*> listOf1 arbitrary
                       , Select <$> arbitrary <*> arbitrary <*> arbitrary
                       , Update <$> arbitrary <*> listOf1 arbitrary <*> arbitrary
@@ -168,6 +185,7 @@ tests = testGroup "Data.Bro.Parser.Tests"
     [ testProperty "statement" (genericParseUnparse statement)
     , testProperty "condition" (genericParseUnparse condition)
     , testProperty "projection" (genericParseUnparse projection)
+    , testProperty "expr" (genericParseUnparse expr)
     ]
 
 prop_statementParseUnparse :: Statement -> Property
@@ -176,9 +194,9 @@ prop_statementParseUnparse = genericParseUnparse statement
 genericParseUnparse :: (Eq a, Show a, ToSQL a, Arbitrary a)
                     => Parser a -> a -> Property
 genericParseUnparse p s =
-    printTestCase ("SQL: " ++ S.unpack sql) $
-    printTestCase ("AST: " ++ show s) $
-    printTestCase ("RES: " ++ show result) $
+    printTestCase ("Generated SQL: " ++ S.unpack sql) $
+    printTestCase ("Generated AST: " ++ show s) $
+    printTestCase ("Parsed       : " ++ show result) $
     case result of
         Left _msg -> False
         Right s'  -> s == s'

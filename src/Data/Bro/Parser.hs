@@ -4,6 +4,7 @@ module Data.Bro.Parser
   ( statement
 
 #ifdef DEBUG
+  , expr
   , projection
   , condition
 #endif
@@ -17,7 +18,7 @@ import Data.Char (isAlphaNum)
 import qualified Data.ByteString.Char8 as S
 
 import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
-                                         takeWhile, sepBy1, number, decimal,
+                                         takeWhile1, sepBy1, number, decimal,
                                          char, stringCI, skipSpace, option)
 
 import Data.Bro.Types (TableName, TableSchema,
@@ -53,7 +54,7 @@ statement = choice [selectFrom, createTable, insertInto, update]
         token "update"
         table <- tableName
         token "set"
-        bindings <- listOf1 $ do
+        bindings <- (`sepBy1` (char ',' <* skipSpace)) $ do
             name <- columnName
             token "="
             e <- expr
@@ -63,13 +64,13 @@ statement = choice [selectFrom, createTable, insertInto, update]
 
 expr :: Parser Expr
 expr = as "expr" $!
-       choice [ Const <$> columnValue
-              , Field <$> columnName
-              , token "-" *> (Negate <$> expr)
-              , binOp "+" Add
+       choice [ binOp "+" Add
               , binOp "-" Sub
               , binOp "*" Multiply
               , binOp "/" Divide
+              , Const <$> columnValue
+              , Field <$> columnName
+              , token "-" *> (Negate <$> expr)
               ]
   where
     binOp :: S.ByteString -> (Expr -> Expr -> Expr) -> Parser Expr
@@ -82,7 +83,8 @@ expr = as "expr" $!
 projection :: Parser Projection
 projection =
     as "projection" $!
-    (token "*" *> pure (Projection [])) <|> Projection <$> listOf1 expr
+    token "*" *> pure (Projection []) <|>
+    Projection <$> expr `sepBy1` (char ',' <* skipSpace)
 
 condition :: Parser Condition
 condition = as "condition" $! do
@@ -141,7 +143,7 @@ spaced p = skipSpace *> p <* skipSpace
 {-# INLINE spaced #-}
 
 word :: Parser S.ByteString
-word = takeWhile isAlphaNum
+word = takeWhile1 isAlphaNum
 {-# INLINE word #-}
 
 token :: S.ByteString -> Parser ()
