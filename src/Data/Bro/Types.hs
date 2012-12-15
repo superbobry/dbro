@@ -114,4 +114,6 @@ newtype Projection = Projection [(ColumnName, Expr)] deriving (Eq, Show)
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName ![(ColumnName, ColumnValue)]
                | Select TableName Projection (Maybe Condition)
+               | Update TableName ![(ColumnName, Expr)] (Maybe Condition)
+               | Delete TableName (Maybe Condition)
     deriving (Eq, Show)

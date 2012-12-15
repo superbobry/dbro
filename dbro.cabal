@@ -62,6 +62,9 @@ test-suite dbro-tests
   hs-source-dirs: tests
   ghc-options:    -Wall -fwarn-unused-imports -fno-warn-orphans
 
+  if flag(debug)
+    cpp-options: -DDEBUG
+
   type:           exitcode-stdio-1.0
   main-is:        Tests.hs
 
