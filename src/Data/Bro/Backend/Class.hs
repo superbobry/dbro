@@ -3,6 +3,7 @@ module Data.Bro.Backend.Class
   , Query(..)
   , fetchTable
   , withTable
+  , transformRow
   ) where
 
 import Control.Monad.State (modify)
@@ -10,7 +11,8 @@ import Control.Monad.Error (throwError)
 
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types (TableName, TableSchema, Table, Row, RowId)
+import Data.Bro.Types 	(TableName, TableSchema, Table, Row, RowId,
+						ColumnName, Expr, Condition)
 
 class Backend b where
     insertTable :: TableName -> TableSchema -> Bro BackendError b ()
@@ -30,6 +32,8 @@ class Backend b => Query b where
 
     insertInto :: TableName -> Row -> Bro BackendError b RowId
 
+    updateTable :: TableName -> [(ColumnName, Expr)] -> (Maybe Condition) -> Bro BackendError b Int
+
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do
     res <- lookupTable name
@@ -42,3 +46,7 @@ withTable :: Backend b
           -> Bro BackendError b a
 withTable name f = f =<< fetchTable name
 {-# INLINE withTable #-}
+
+--dummy row transform function
+transformRow :: [(ColumnName, Expr)] -> Row -> Row
+transformRow _ r = r

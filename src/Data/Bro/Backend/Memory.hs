@@ -5,6 +5,7 @@ module Data.Bro.Backend.Memory
   , makeMemoryBackend
   ) where
 
+import Data.List (find)
 import Control.Applicative ((<$>))
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -13,7 +14,7 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets)
 import Data.Default (def)
 
-import Data.Bro.Backend.Class (Backend(..), Query(..), withTable)
+import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..))
@@ -59,6 +60,21 @@ instance Query MemoryBackend where
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
     insertInto _name _row = error "Inserting existing Row"
+
+    updateTable name exprs cond = do
+        rows <- selectAll name
+        modifyBackend $ \b@(MemoryBackend { .. }) ->
+            let rows' = map (transformRow exprs) rows
+                oldrows = M.findWithDefault [] name memData
+            in b { memData = M.insert name (change oldrows rows') memData }
+        return $ length rows
+        where 
+          change (h:oldList) newList = nh:(change oldList) newList
+            where 
+              nh = case find (\node -> (rowId node) == rowId h) newList of
+                  Nothing -> h
+                  Just node -> node
+          change [] _ = []
 
 makeMemoryBackend :: MemoryBackend
 makeMemoryBackend = MemoryBackend { memTables = M.empty, memData = M.empty }
