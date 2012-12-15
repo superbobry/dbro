@@ -11,8 +11,8 @@ import Control.Monad.Error (throwError)
 
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types 	(TableName, TableSchema, Table, Row, RowId,
-						ColumnName, Expr, Condition)
+import Data.Bro.Types   (TableName, TableSchema, Table, Row, RowId,
+                        ColumnName, Expr, Condition)
 
 class Backend b where
     insertTable :: TableName -> TableSchema -> Bro BackendError b ()
