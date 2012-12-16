@@ -20,6 +20,7 @@ import Data.Bro.Backend.Class (Backend(..), Query)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Result (BackendResult(..))
 import Data.Bro.Backend.Disk (makeDiskBackend)
+import Data.Bro.Backend.Memory (makeMemoryBackend)
 import Data.Bro.Monad (Bro, runBro)
 import Data.Bro.Parser (statement)
 import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..), Table(..))
@@ -54,6 +55,7 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
 
   formatResult :: BackendResult -> L.ByteString
   formatResult Created = "OK"
+  formatResult (Updated nUpd) = L.pack $ printf "OK %i" nUpd
   formatResult (Inserted rowId0) = L.pack $ printf "OK %i" rowId0
   formatResult (Selected (Table { tabSchema = (schema, _) }) rows) =
       -- FIXME(Sergei): switch to 'Data.Vector' for [Row]?

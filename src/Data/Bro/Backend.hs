@@ -30,6 +30,8 @@ exec s = case s of
         remapped <- remap (fst tabSchema) pairs
         let row = Row { rowId = Nothing, rowData = remapped }
         Inserted <$> Backend.insertInto name row
+    Update name exprs cond -> withTable name $ \table ->
+        Updated <$> Backend.updateTable name exprs cond
 
 remap :: Backend b
       => TableSchema
