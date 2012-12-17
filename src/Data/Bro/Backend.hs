@@ -31,7 +31,7 @@ exec s = case s of
         let row = Row { rowId = Nothing, rowData = remapped }
         Inserted <$> Backend.insertInto name row
     Update name exprs cond -> withTable name $ \table ->
-        Updated <$> Backend.updateTable name exprs cond
+        Updated <$> Backend.update name exprs cond
 
 remap :: Backend b
       => TableSchema

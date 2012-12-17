@@ -32,7 +32,7 @@ class Backend b => Query b where
 
     insertInto :: TableName -> Row -> Bro BackendError b RowId
 
-    updateTable :: TableName -> [(ColumnName, Expr)] -> (Maybe Condition) -> Bro BackendError b Int
+    update :: TableName -> [(ColumnName, Expr)] -> (Maybe Condition) -> Bro BackendError b Int
 
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do

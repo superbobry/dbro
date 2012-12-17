@@ -11,9 +11,9 @@ import Data.Binary (Binary, encodeFile, decodeFile, put, get,
                     encode, decode)
 import Data.Int (Int64)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromJust)
 import System.Directory (doesFileExist, removeFile)
-import System.IO (IOMode(..), withBinaryFile)
+import System.IO (IOMode(..), SeekMode(..), withBinaryFile, openFile, hSeek, hClose)
 import System.FilePath ((</>))
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as S
@@ -24,7 +24,7 @@ import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (liftIO)
 import Data.Default (def)
 
-import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, fetchTable)
+import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..))
@@ -100,19 +100,41 @@ instance Query DiskBackend where
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
-      where
-        -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
-        -- where @\xff@ starts data segment. A given chunk is expected to
-        -- be shorter than @n - 1@ to fit the @\xff@ tag.
-        wrap :: Int -> L.ByteString -> L.ByteString
-        wrap n s =
-            let len = fromIntegral $ L.length s
-                pad = fromIntegral $ n - 1 - len
-            in case compare len (n - 1) of
-                EQ -> L.cons 0xff s
-                LT -> L.append (L.replicate pad 0) $ L.cons 0xff s
-                GT -> error "row chunk size overflow"
     insertInto _name _row = error "Inserting existing Row"
+
+    update name exprs cond = do
+        Table { tabSchema = (_, rowSize0) } <- fetchTable name
+        rows <- selectAll name
+        let newRows = map (transformRow exprs) rows
+        diskRoot <- gets diskRoot
+        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) WriteMode
+        rewriteRows hTbl rowSize0 newRows
+        liftIO $! hClose hTbl
+        return $ length newRows
+      where
+        rewriteRows handle rowSz (row:rows) = do
+            let bytes = wrap rowSz . encode $! row
+            liftIO $! putStrLn (show bytes)
+            let offset = rowSz * (fromJust $ rowId row)
+            writeBytes handle bytes (fromIntegral offset)
+            rewriteRows handle rowSz rows
+        rewriteRows _ _ [] = return ()
+
+        writeBytes handle bytes off = do
+            liftIO $! hSeek handle AbsoluteSeek off
+            liftIO $! L.hPut handle bytes
+
+-- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
+-- where @\xff@ starts data segment. A given chunk is expected to
+-- be shorter than @n - 1@ to fit the @\xff@ tag.
+wrap :: Int -> L.ByteString -> L.ByteString
+wrap n s =
+    let len = fromIntegral $ L.length s
+        pad = fromIntegral $ n - 1 - len
+    in case compare len (n - 1) of
+        EQ -> L.cons 0xff s
+        LT -> L.append (L.replicate pad 0) $ L.cons 0xff s
+        GT -> error "row chunk size overflow"
 
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do

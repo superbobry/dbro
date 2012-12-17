@@ -61,7 +61,7 @@ instance Query MemoryBackend where
         return $! tabCounter
     insertInto _name _row = error "Inserting existing Row"
 
-    updateTable name exprs cond = do
+    update name exprs cond = do
         rows <- selectAll name
         modifyBackend $ \b@(MemoryBackend { .. }) ->
             let rows' = map (transformRow exprs) rows
