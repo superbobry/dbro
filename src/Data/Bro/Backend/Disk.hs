@@ -107,15 +107,15 @@ instance Query DiskBackend where
         rows <- selectAll name
         let newRows = map (transformRow exprs) rows
         diskRoot <- gets diskRoot
-        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) WriteMode
+        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
         rewriteRows hTbl rowSize0 newRows
         liftIO $! hClose hTbl
         return $ length newRows
       where
         rewriteRows handle rowSz (row:rows) = do
-            let bytes = wrap rowSz . encode $! row
-            liftIO $! putStrLn (show bytes)
-            let offset = rowSz * (fromJust $ rowId row)
+            let bytes = wrap rowSz (encode row)
+            liftIO $! putStrLn (decode bytes)
+            let offset = rowSz * ((fromJust $ rowId row) - 1) --seems that we have indexes from 1?
             writeBytes handle bytes (fromIntegral offset)
             rewriteRows handle rowSz rows
         rewriteRows _ _ [] = return ()
