@@ -4,8 +4,10 @@ module Data.Bro.Expr
   ( evalExpr
   ) where
 
-import Safe (readDef)
+import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as S
+
+import Safe (readDef)
 
 import Data.Bro.Types (Expr(..), ColumnName, ColumnValue(..))
 
@@ -25,14 +27,12 @@ instance Fractional ColumnValue where
 
 evalExpr :: [(ColumnName, ColumnValue)] -> Expr -> ColumnValue
 evalExpr _ctx (Const v) = v
-evalExpr ctx (Field n) = case lookup n ctx of
-    Just v  -> v
-    Nothing -> error "evalExpr"
+evalExpr ctx (Field n) = fromMaybe (error "evalExpr") $ lookup n ctx
 evalExpr ctx (Negate e) = negate (evalExpr ctx e)
-evalExpr ctx (Add e1 e2) = (evalExpr ctx e1) + (evalExpr ctx e2)
-evalExpr ctx (Sub e1 e2) = (evalExpr ctx e1) - (evalExpr ctx e2)
-evalExpr ctx (Multiply e1 e2) = (evalExpr ctx e1) * (evalExpr ctx e2)
-evalExpr ctx (Divide e1 e2) = (evalExpr ctx e1) / (evalExpr ctx e2)
+evalExpr ctx (Add e1 e2) = evalExpr ctx e1 + evalExpr ctx e2
+evalExpr ctx (Sub e1 e2) = evalExpr ctx e1 - evalExpr ctx e2
+evalExpr ctx (Multiply e1 e2) = evalExpr ctx e1 * evalExpr ctx e2
+evalExpr ctx (Divide e1 e2) = evalExpr ctx e1 / evalExpr ctx e2
 
 cv_unOp :: (Num a, Read a, a ~ Double) => (a -> a) -> ColumnValue -> ColumnValue
 cv_unOp unOp v = cv_cast v (unOp $ cv_toDouble v)

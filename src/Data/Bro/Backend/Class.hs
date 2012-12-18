@@ -37,7 +37,7 @@ class Backend b => Query b where
     selectAll :: TableName -> Bro BackendError b [Row]
 
     select :: TableName -> Projection -> Maybe Condition -> Bro BackendError b [Row]
-    select name p c = withTable name $ \table -> do
+    select name p c = withTable name $ \table ->
         projectRows table p <$> case c of
             Just condition ->
                 filterRows table condition <$> selectAll name
@@ -45,7 +45,7 @@ class Backend b => Query b where
 
     insertInto :: TableName -> Row -> Bro BackendError b RowId
 
-    update :: TableName -> [(ColumnName, Expr)] -> (Maybe Condition) -> Bro BackendError b Int
+    update :: TableName -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
 
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do

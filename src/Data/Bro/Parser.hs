@@ -57,7 +57,7 @@ statement = choice [selectFrom, createTable, insertInto, update]
             name <- columnName
             token "="
             e <- expr
-            return $ (name, e)
+            return (name, e)
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Update table bindings c
 
