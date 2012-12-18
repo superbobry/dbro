@@ -111,18 +111,28 @@ instance Query DiskBackend where
         rewriteRows hTbl rowSize0 newRows
         liftIO $! hClose hTbl
         return $ length newRows
-      where
-        rewriteRows handle rowSz (row:rows) = do
-            let bytes = wrap rowSz (encode row)
-            liftIO $! putStrLn (decode bytes)
-            let offset = rowSz * ((fromJust $ rowId row) - 1) --seems that we have indexes from 1?
-            writeBytes handle bytes (fromIntegral offset)
-            rewriteRows handle rowSz rows
-        rewriteRows _ _ [] = return ()
 
-        writeBytes handle bytes off = do
-            liftIO $! hSeek handle AbsoluteSeek off
-            liftIO $! L.hPut handle bytes
+    delete name cond = do
+        Table { tabSchema = (_, rowSize0) } <- fetchTable name
+        rows <- select name (Projection []) cond
+        let newRows = map (\r -> r { isDeleted = True } ) rows
+        diskRoot <- gets diskRoot
+        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
+        rewriteRows hTbl rowSize0 newRows
+        liftIO $! hClose hTbl
+        return $ length newRows
+
+rewriteRows handle rowSz (row:rows) = do
+	let bytes = wrap rowSz (encode row)
+	liftIO $! putStrLn (decode bytes)
+	let offset = rowSz * ((fromJust $ rowId row) - 1) --seems that we have indexes from 1?
+	writeBytes handle bytes (fromIntegral offset)
+	rewriteRows handle rowSz rows
+rewriteRows _ _ [] = return ()
+
+writeBytes handle bytes off = do
+	liftIO $! hSeek handle AbsoluteSeek off
+	liftIO $! L.hPut handle bytes
 
 -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
 -- where @\xff@ starts data segment. A given chunk is expected to

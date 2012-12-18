@@ -26,5 +26,6 @@ rowSize tabSchema = (+ overhead) $! sum $! do
     overhead =
         1    +  -- data segment tag
         1    +  -- row id maybe tag
+        1    +  -- isDeleted flag
         word +  -- row id
         word    -- list lengthf52ce92

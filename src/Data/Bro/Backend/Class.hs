@@ -47,6 +47,8 @@ class Backend b => Query b where
 
     update :: TableName -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
 
+    delete :: TableName -> (Maybe Condition) -> Bro BackendError b Int
+
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do
     res <- lookupTable name

@@ -28,13 +28,14 @@ type RowId = Int
 
 data Row = Row { rowId   :: Maybe RowId
                , rowData :: ![ColumnValue]
+               , isDeleted :: Bool
                } deriving (Eq, Show)
 
 instance Binary Row where
     put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
-    put (Row { .. }) = put rowId >> put rowData
+    put (Row { .. }) = put rowId >> put rowData >> put isDeleted
 
-    get = Row <$> get <*> get
+    get = Row <$> get <*> get <*> get
 
 type ColumnName = S.ByteString
 data ColumnType = IntegerColumn
