@@ -68,13 +68,13 @@ instance Query MemoryBackend where
                 oldrows = M.findWithDefault [] name memData
             in b { memData = M.insert name (change oldrows rows') memData }
         return $ length rows
-      where 
+      where
         change (h:oldList) newList = nh:(change oldList) newList
-          where 
+          where
             nh = case find (\node -> (rowId node) == rowId h) newList of
                 Nothing -> h
                 Just node -> node
         change [] _ = []
 
-makeMemoryBackend :: IO MemoryBackend
-makeMemoryBackend = return $ MemoryBackend { memTables = M.empty, memData = M.empty }
+makeMemoryBackend :: MemoryBackend
+makeMemoryBackend = MemoryBackend { memTables = M.empty, memData = M.empty }
