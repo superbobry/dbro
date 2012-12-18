@@ -6,5 +6,5 @@ import Data.Bro.Types (Table, Row, RowId)
 
 data BackendResult = Created
                    | Inserted RowId
-                   | Selected Table [Row]
+                   | Selected [Row]
                    | Updated Int

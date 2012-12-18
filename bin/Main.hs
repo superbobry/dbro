@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, unless)
 import Text.Printf (printf)
 import qualified System.IO as IO
 
@@ -22,7 +22,7 @@ import Data.Bro.Backend.Result (BackendResult(..))
 import Data.Bro.Backend.Disk (makeDiskBackend)
 import Data.Bro.Monad (Bro, runBro)
 import Data.Bro.Parser (statement)
-import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..), Table(..))
+import Data.Bro.Types (Row(..), ColumnValue(..))
 
 instance ToField ColumnValue where
     toField (IntegerValue i) = toField i
@@ -44,7 +44,9 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
           Right s  -> exec s >>= liftIO . putStrLnLn . formatResult
 
   putStrLnLn :: L.ByteString -> IO ()
-  putStrLnLn s = L.putStrLn s >> IO.putChar '\n'
+  putStrLnLn s = do
+      unless (L.null s) $ L.putStrLn s
+      IO.putChar '\n'
 
   handleError :: Backend b => BackendError -> Bro BackendError b ()
   handleError = liftIO . putStrLnLn . formatError
@@ -56,19 +58,5 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
   formatResult Created = "OK"
   formatResult (Updated nUpd) = L.pack $ printf "OK %i" nUpd
   formatResult (Inserted rowId0) = L.pack $ printf "OK %i" rowId0
-  formatResult (Selected (Table { tabSchema = (schema, _) }) rows) =
-      -- FIXME(Sergei): switch to 'Data.Vector' for [Row]?
-      if L.null body
-      then header
-      else L.append header . L.cons '\n' $ L.init body
-    where
-      header :: L.ByteString
-      header = L.fromChunks . return . S.intercalate "," $ do
-          (name, t) <- schema
-          return $! S.append name $ case t of
-              IntegerColumn   -> "(int)"
-              DoubleColumn    -> "(double)"
-              VarcharColumn _ -> "(string)"
-
-      body :: L.ByteString
-      body = Csv.encode $ V.fromList rows
+  formatResult (Selected rows) = let s = Csv.encode $ V.fromList rows in
+      if L.null s then s else L.init s

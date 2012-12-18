@@ -22,8 +22,7 @@ import qualified Data.Bro.Backend.Class as Backend
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b BackendResult
 exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
-    Select name p c -> withTable name $ \table ->
-        Selected table <$> Backend.select name p c
+    Select name p c -> Selected <$> Backend.select name p c
     InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
         remapped <- remap (fst tabSchema) pairs
         let row = Row { rowId = Nothing, rowData = remapped }
