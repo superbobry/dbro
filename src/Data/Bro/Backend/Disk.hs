@@ -86,8 +86,12 @@ instance Query DiskBackend where
         go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
         go xs _bytes _rowSize1 0 = reverse xs
         go xs bytes rowSize1 i =
-            let x = decode . unwrap $ L.take rowSize1 bytes in
-            x `seq` go (x:xs) (L.drop rowSize1 bytes) rowSize1 (i - 1)
+            case decode . unwrap $ L.take rowSize1 bytes of
+                x@(Row { rowIsDeleted = True }) ->
+                    -- Note(Sergei): skip deleted rows.
+                    go xs (L.drop rowSize1 bytes) rowSize1 (i - 1)
+                x ->
+                    x `seq` go (x:xs) (L.drop rowSize1 bytes) rowSize1 (i - 1)
 
         unwrap :: L.ByteString -> L.ByteString
         unwrap = L.tail . L.dropWhile (/= 0xff)
@@ -115,7 +119,7 @@ instance Query DiskBackend where
     delete name cond = do
         Table { tabSchema = (_, rowSize0) } <- fetchTable name
         rows <- select name (Projection []) cond
-        let newRows = map (\r -> r { isDeleted = True } ) rows
+        let newRows = map (\r -> r { rowIsDeleted = True } ) rows
         diskRoot <- gets diskRoot
         hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
         rewriteRows hTbl rowSize0 newRows

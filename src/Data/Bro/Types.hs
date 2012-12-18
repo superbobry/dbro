@@ -28,12 +28,12 @@ type RowId = Int
 
 data Row = Row { rowId   :: Maybe RowId
                , rowData :: ![ColumnValue]
-               , isDeleted :: Bool
+               , rowIsDeleted :: Bool
                } deriving (Eq, Show)
 
 instance Binary Row where
     put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
-    put (Row { .. }) = put rowId >> put rowData >> put isDeleted
+    put (Row { .. }) = put rowId >> put rowData >> put rowIsDeleted
 
     get = Row <$> get <*> get <*> get
 
