@@ -43,12 +43,15 @@ library
     Data.Bro.Backend.Memory
     Data.Bro.Backend.Result
     Data.Bro.Backend.Util
+    Data.Bro.Expr
     Data.Bro.Monad
+    Data.Bro.Simple
     Data.Bro.Types
     Data.Bro.Parser
 
   build-depends:    base
                   , ghc == 7.6.*
+                  , safe == 0.3.*
                   , attoparsec == 0.10.2.*
                   , bytestring == 0.10.*
                   , containers == 0.5.*

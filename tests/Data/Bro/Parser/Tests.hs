@@ -21,9 +21,10 @@ import Test.QuickCheck (Arbitrary(..), Property, Gen,
                         oneof, listOf1, elements, printTestCase)
 
 import Data.Bro.Parser (statement, projection, condition, expr)
+import Data.Bro.Simple (simplify)
 import Data.Bro.Types (Row(..), ColumnType(..), ColumnValue(..), ColumnName,
                        TableSchema, Projection(..), Expr(..),
-                       Condition(..), Statement(..), simplify)
+                       Condition(..), Statement(..))
 
 -- | Generate a valid SQL symbol name, currently a stub, which generates
 -- words in the alphabet /[a-fA-F0-9]/.
@@ -119,10 +120,10 @@ instance ToSQL TableSchema where
 
 instance ToSQL Expr where
     toSQL (Const v) = toSQL v
-    toSQL (Field name) = name
-    toSQL (Negate e) = S.cons '-' (toSQL e)
-    toSQL (Add e1 e2) = S.concat [toSQL e1, " + ", toSQL e2]
-    toSQL (Sub e1 e2) = S.concat [toSQL e1, " - ", toSQL e2]
+    toSQL (Field n) = n
+    toSQL (Negate e)  = S.concat ["-", "(", toSQL e, ")"]
+    toSQL (Add e1 e2) = S.concat ["(", toSQL e1, " + ", toSQL e2, ")"]
+    toSQL (Sub e1 e2) = S.concat ["(", toSQL e1, " - ", toSQL e2, ")"]
     toSQL (Multiply e1 e2) = S.concat [toSQL e1, " * ", toSQL e2]
     toSQL (Divide e1 e2) = S.concat [toSQL e1, " / ", toSQL e2]
 
@@ -149,30 +150,30 @@ instance ToSQL Statement where
         S.pack $! printf "CREATE TABLE %s(%s);"
         (S.unpack table)
         (S.unpack $! toSQL schema)
-    toSQL (Select table projection Nothing) =
+    toSQL (Select table p Nothing) =
         S.pack $! printf "SELECT %s FROM %s;"
-        (S.unpack $! toSQL projection)
+        (S.unpack $! toSQL p)
         (S.unpack table)
-    toSQL (Select table projection (Just condition)) =
+    toSQL (Select table p (Just c)) =
         S.pack $! printf "SELECT %s FROM %s WHERE %s;"
-        (S.unpack $! toSQL projection)
+        (S.unpack $! toSQL p)
         (S.unpack table)
-        (S.unpack $! toSQL condition)
+        (S.unpack $! toSQL c)
     toSQL (Update table bindings Nothing) =
         S.pack $! printf "UPDATE %s SET %s;"
         (S.unpack table)
         (S.unpack $! toSQL bindings)
-    toSQL (Update table bindings (Just condition)) =
+    toSQL (Update table bindings (Just c)) =
         S.pack $! printf "UPDATE %s SET %s WHERE %s;"
         (S.unpack table)
         (S.unpack $! toSQL bindings)
-        (S.unpack $! toSQL condition)
+        (S.unpack $! toSQL c)
     toSQL (Delete table Nothing) =
         S.pack $! printf "DELETE FROM %s;" (S.unpack table)
-    toSQL (Delete table (Just condition)) =
+    toSQL (Delete table (Just c)) =
         S.pack $! printf "DELETE FROM %s WHERE %s;"
         (S.unpack table)
-        (S.unpack $! toSQL condition)
+        (S.unpack $! toSQL c)
     toSQL (InsertInto table pairs) =
         let (names, values) = unzip pairs in S.pack $!
         printf "INSERT INTO %s(%s) VALUES (%s);"

@@ -19,10 +19,10 @@ import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
                                          takeWhile1, sepBy1, number, decimal,
                                          char, stringCI, skipSpace, option)
 
+import Data.Bro.Simple (simplify)
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Projection(..), Condition(..), Expr(..), Statement(..),
-                       simplify)
+                       Projection(..), Condition(..), Expr(..), Statement(..))
 
 statement :: Parser Statement
 statement = choice [selectFrom, createTable, insertInto, update]
@@ -62,20 +62,21 @@ statement = choice [selectFrom, createTable, insertInto, update]
         return $ Update table bindings c
 
 expr :: Parser Expr
-expr = as "expr" $! simplify <$> do
-    left <- choice [ Const <$> columnValue
-                   , Field <$> columnName
-                   , token "-" *> (Negate <$> expr)
-                   ]
-    option left $ choice [ binOp "+" (Add left)
-                         , binOp "-" (Sub left)
-                         , binOp "*" (Multiply left)
-                         , binOp "/" (Divide left)
-                         ]
-
+expr = as "expr" $! simplify <$> compound
   where
-    binOp :: S.ByteString -> (Expr -> Expr) -> Parser Expr
-    binOp op con = token op *> (con <$> expr)
+    term = choice [ between '(' ')' expr
+                  , Const <$> columnValue
+                  , Field <$> columnName
+                  , token "-" *> (Negate <$> term)
+                  ]
+    basic = choice [ Multiply <$> term <*> (token "*" *> basic)
+                   , Divide <$> term <*> (token "/" *> basic)
+                   , term
+                   ]
+    compound = choice [ Add <$> basic <*> (token "+" *> expr)
+                      , Sub <$> basic <*> (token "-" *> expr)
+                      , basic
+                      ]
 
 projection :: Parser Projection
 projection =
