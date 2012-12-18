@@ -23,16 +23,16 @@ instance Fractional ColumnValue where
     (/) = cv_binOp (/)
     fromRational = undefined
 
-evalExpr :: Expr -> [(ColumnName, ColumnValue)] -> ColumnValue
-evalExpr (Const v) _ctx = v
-evalExpr (Field n) ctx = case lookup n ctx of
+evalExpr :: [(ColumnName, ColumnValue)] -> Expr -> ColumnValue
+evalExpr _ctx (Const v) = v
+evalExpr ctx (Field n) = case lookup n ctx of
     Just v  -> v
     Nothing -> error "evalExpr"
-evalExpr (Negate e) ctx = negate (evalExpr e ctx)
-evalExpr (Add e1 e2) ctx = (evalExpr e1 ctx) + (evalExpr e2 ctx)
-evalExpr (Sub e1 e2) ctx = (evalExpr e1 ctx) - (evalExpr e2 ctx)
-evalExpr (Multiply e1 e2) ctx = (evalExpr e1 ctx) * (evalExpr e2 ctx)
-evalExpr (Divide e1 e2) ctx = (evalExpr e1 ctx) / (evalExpr e2 ctx)
+evalExpr ctx (Negate e) = negate (evalExpr ctx e)
+evalExpr ctx (Add e1 e2) = (evalExpr ctx e1) + (evalExpr ctx e2)
+evalExpr ctx (Sub e1 e2) = (evalExpr ctx e1) - (evalExpr ctx e2)
+evalExpr ctx (Multiply e1 e2) = (evalExpr ctx e1) * (evalExpr ctx e2)
+evalExpr ctx (Divide e1 e2) = (evalExpr ctx e1) / (evalExpr ctx e2)
 
 cv_unOp :: (Num a, Read a, a ~ Double) => (a -> a) -> ColumnValue -> ColumnValue
 cv_unOp unOp v = cv_cast v (unOp $ cv_toDouble v)

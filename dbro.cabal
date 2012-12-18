@@ -43,6 +43,7 @@ library
     Data.Bro.Backend.Memory
     Data.Bro.Backend.Result
     Data.Bro.Backend.Util
+    Data.Bro.Condition
     Data.Bro.Expr
     Data.Bro.Monad
     Data.Bro.Simple

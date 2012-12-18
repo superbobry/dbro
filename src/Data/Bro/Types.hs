@@ -56,7 +56,7 @@ instance Binary ColumnType where
 data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
                  | DoubleValue  {-# UNPACK #-} !Double
                  | VarcharValue S.ByteString
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
 instance Binary ColumnValue where
     put (IntegerValue v) = put 'i' >> put v
