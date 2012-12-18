@@ -126,6 +126,7 @@ instance Query DiskBackend where
         liftIO $! hClose hTbl
         return $ length newRows
 
+-- rewriteRows :: Handle -> Int -> [Row] -> [Row]
 rewriteRows handle rowSz (row:rows) = do
 	let bytes = wrap rowSz (encode row)
 	liftIO $! putStrLn (decode bytes)

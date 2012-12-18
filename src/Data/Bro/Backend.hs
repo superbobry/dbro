@@ -29,6 +29,8 @@ exec s = case s of
         Inserted <$> Backend.insertInto name row
     Update name exprs cond -> withTable name $ \_table ->
         Updated <$> Backend.update name exprs cond
+    Delete name cond -> withTable name $ \_table -> 
+        Deleted <$> Backend.delete name cond
 
 remap :: Backend b
       => TableSchema

@@ -57,6 +57,7 @@ main = void $ runBro (forever process) =<< makeDiskBackend "." where
   formatResult :: BackendResult -> L.ByteString
   formatResult Created = "OK"
   formatResult (Updated nUpd) = L.pack $ printf "OK %i" nUpd
+  formatResult (Deleted nDel) = L.pack $ printf "OK %i" nDel
   formatResult (Inserted rowId0) = L.pack $ printf "OK %i" rowId0
   formatResult (Selected rows) = let s = Csv.encode $ V.fromList rows in
       if L.null s then s else L.init s

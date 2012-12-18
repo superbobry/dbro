@@ -8,3 +8,4 @@ data BackendResult = Created
                    | Inserted RowId
                    | Selected [Row]
                    | Updated Int
+                   | Deleted Int
