@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Data.Bro.Backend.Class
   ( Backend(..)
   , Query(..)
@@ -10,9 +12,10 @@ import Control.Monad.State (modify)
 import Control.Monad.Error (throwError)
 
 import Data.Bro.Backend.Error (BackendError(..))
+import Data.Bro.Expr (evalExpr)
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types   (TableName, TableSchema, Table, Row, RowId,
-                        ColumnName, Expr, Condition)
+import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId,
+                       ColumnName, ColumnValue, Expr, Condition)
 
 class Backend b where
     insertTable :: TableName -> TableSchema -> Bro BackendError b ()
@@ -47,6 +50,17 @@ withTable :: Backend b
 withTable name f = f =<< fetchTable name
 {-# INLINE withTable #-}
 
---dummy row transform function
-transformRow :: [(ColumnName, Expr)] -> Row -> Row
-transformRow _ r = r
+transformRow :: Table -> [(ColumnName, Expr)] -> Row -> Row
+transformRow (Table { tabSchema = (schema, _) }) es r@(Row { rowData }) =
+    r { rowData = map transform pairs }
+  where
+    pairs :: [(ColumnName, ColumnValue)]
+    pairs = zip names rowData
+
+    names :: [ColumnName]
+    names = map fst schema
+
+    transform :: (ColumnName, ColumnValue) -> ColumnValue
+    transform (name, v) = case lookup name es of
+        Just e  -> evalExpr pairs e
+        Nothing -> v

@@ -103,9 +103,9 @@ instance Query DiskBackend where
     insertInto _name _row = error "Inserting existing Row"
 
     update name exprs cond = do
-        Table { tabSchema = (_, rowSize0) } <- fetchTable name
+        table@(Table { tabSchema = (_, rowSize0) }) <- fetchTable name
         rows <- selectAll name
-        let newRows = map (transformRow exprs) rows
+        let newRows = map (transformRow table exprs) rows
         diskRoot <- gets diskRoot
         hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
         rewriteRows hTbl rowSize0 newRows

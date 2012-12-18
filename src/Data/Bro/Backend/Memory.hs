@@ -14,7 +14,8 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets)
 import Data.Default (def)
 
-import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, transformRow)
+import Data.Bro.Backend.Class (Backend(..), Query(..),
+                               withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..))
@@ -63,8 +64,9 @@ instance Query MemoryBackend where
 
     update name exprs cond = do
         rows <- selectAll name
+        table <- fetchTable name
         modifyBackend $ \b@(MemoryBackend { .. }) ->
-            let rows' = map (transformRow exprs) rows
+            let rows' = map (transformRow table exprs) rows
                 oldrows = M.findWithDefault [] name memData
             in b { memData = M.insert name (change oldrows rows') memData }
         return $ length rows
