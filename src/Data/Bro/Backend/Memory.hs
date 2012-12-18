@@ -18,7 +18,7 @@ import Data.Bro.Backend.Class (Backend(..), Query(..),
                                withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
-import Data.Bro.Types (TableName, Table(..), Row(..))
+import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
 
 data MemoryBackend = MemoryBackend { memTables :: Map TableName Table
                                    , memData   :: Map TableName [Row]
@@ -62,8 +62,8 @@ instance Query MemoryBackend where
         return $! tabCounter
     insertInto _name _row = error "Inserting existing Row"
 
-    update name exprs cond = do
-        rows <- selectAll name
+    update name exprs c = do
+        rows <- select name (Projection []) c
         table <- fetchTable name
         modifyBackend $ \b@(MemoryBackend { .. }) ->
             let rows' = map (transformRow table exprs) rows

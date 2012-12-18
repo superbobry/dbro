@@ -27,7 +27,7 @@ import Data.Default (def)
 import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
-import Data.Bro.Types (TableName, Table(..), Row(..))
+import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)
@@ -102,9 +102,9 @@ instance Query DiskBackend where
         return $! tabCounter
     insertInto _name _row = error "Inserting existing Row"
 
-    update name exprs cond = do
+    update name exprs c = do
         table@(Table { tabSchema = (_, rowSize0) }) <- fetchTable name
-        rows <- selectAll name
+        rows <- select name (Projection []) c
         let newRows = map (transformRow table exprs) rows
         diskRoot <- gets diskRoot
         hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode

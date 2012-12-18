@@ -8,14 +8,17 @@ module Data.Bro.Backend.Class
   , transformRow
   ) where
 
+import Control.Applicative ((<$>))
 import Control.Monad.State (modify)
 import Control.Monad.Error (throwError)
 
 import Data.Bro.Backend.Error (BackendError(..))
+import Data.Bro.Condition (evalCondition)
 import Data.Bro.Expr (evalExpr)
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId,
-                       ColumnName, ColumnValue, Expr, Condition)
+                       ColumnName, ColumnValue, Expr, Projection(..),
+                       Condition)
 
 class Backend b where
     insertTable :: TableName -> TableSchema -> Bro BackendError b ()
@@ -32,6 +35,13 @@ class Backend b where
 
 class Backend b => Query b where
     selectAll :: TableName -> Bro BackendError b [Row]
+
+    select :: TableName -> Projection -> Maybe Condition -> Bro BackendError b [Row]
+    select name p c = withTable name $ \table -> do
+        projectRows table p <$> case c of
+            Just condition ->
+                filterRows table condition <$> selectAll name
+            Nothing -> selectAll name
 
     insertInto :: TableName -> Row -> Bro BackendError b RowId
 
@@ -64,3 +74,20 @@ transformRow (Table { tabSchema = (schema, _) }) es r@(Row { rowData }) =
     transform (name, v) = case lookup name es of
         Just e  -> evalExpr pairs e
         Nothing -> v
+
+filterRows :: Table -> Condition -> [Row] -> [Row]
+filterRows (Table { tabSchema = (schema, _) }) c = filter f where
+  names :: [ColumnName]
+  names = map fst schema
+
+  f :: Row -> Bool
+  f (Row { rowData }) = evalCondition (zip names rowData) c
+
+projectRows :: Table -> Projection -> [Row] -> [Row]
+projectRows _table (Projection []) = id
+projectRows (Table { tabSchema = (schema, _) }) (Projection p) = map f where
+  names :: [ColumnName]
+  names = map fst schema
+
+  f :: Row -> Row
+  f r@(Row { rowData }) = r { rowData = map (evalExpr $ zip names rowData) p }
