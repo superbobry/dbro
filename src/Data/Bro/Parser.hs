@@ -25,7 +25,7 @@ import Data.Bro.Types (TableName, TableSchema,
                        Projection(..), Condition(..), Expr(..), Statement(..))
 
 statement :: Parser Statement
-statement = choice [selectFrom, createTable, insertInto, update]
+statement = choice [selectFrom, createTable, insertInto, update, delete]
             <* skipSpace
             <* char ';'
   where
@@ -60,6 +60,12 @@ statement = choice [selectFrom, createTable, insertInto, update]
             return (name, e)
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Update table bindings c
+
+    delete = as "delete" $! do
+        tokens ["delete", "from"]
+        table <- tableName
+        c <- option Nothing $ token "where" *> (Just <$> condition)
+        return $ Delete table c
 
 expr :: Parser Expr
 expr = as "expr" $! simplify <$> compound
