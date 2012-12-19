@@ -15,7 +15,6 @@ public:
 	void print_path();
 
 
-
 private:
 	std::string m_Path;
 
@@ -23,8 +22,10 @@ private:
 
 extern "C"
 {
-
-btree* create_btree();
-
-
+	btree* 		btree_create(const char* path);
+	void 		btree_add(btree* tree, btree::key_type key, btree::value_type val);
+	void 		btree_erase_all(btree* tree, btree::key_type key);
+	void 		btree_erase(btree* tree, btree::key_type key_tip, btree::value_type val);
+	btree::value_type 	btree_find(btree* tree, btree::key_type key);
+	btree::value_type* 	btree_find_range(btree* tree, btree::key_type begin, btree::key_type end);
 }
