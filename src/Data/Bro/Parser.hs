@@ -12,7 +12,7 @@ module Data.Bro.Parser
 
 import Control.Applicative ((<$>), (<*>), (<*), (*>), (<|>), pure)
 import Control.Monad (void)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isSpace)
 import qualified Data.ByteString.Char8 as S
 
 import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
@@ -133,8 +133,12 @@ columnType = choice
 
 columnValue :: Parser ColumnValue
 columnValue = varcharValue <|> numberValue where
+  string :: Parser S.ByteString
+  string = takeWhile1 $ \ch -> not (isSpace ch) && ch /= '\'' && ch /= '"'
+
   varcharValue :: Parser ColumnValue
-  varcharValue = VarcharValue <$> between '"' '"' word
+  varcharValue = VarcharValue <$> (between '"' '"' string <|>
+                                   between '\'' '\'' string)
 
   numberValue :: Parser ColumnValue
   numberValue = number >>= \result ->
@@ -159,11 +163,11 @@ tokens = mapM_ token
 {-# INLINE tokens #-}
 
 between :: Char -> Char -> Parser a -> Parser a
-between open close p = char open *> spaced p <* char close
+between open close p = char open *> p <* char close
 {-# INLINE between #-}
 
 listOf1 :: Parser a -> Parser [a]
-listOf1 p = between '(' ')' $ p `sepBy1` (char ',' <* skipSpace)
+listOf1 p = between '(' ')' . spaced $ p `sepBy1` (char ',' <* skipSpace)
 {-# INLINE listOf1 #-}
 
 as :: String -> Parser a -> Parser a
