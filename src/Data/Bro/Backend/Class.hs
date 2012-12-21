@@ -9,6 +9,7 @@ module Data.Bro.Backend.Class
   ) where
 
 import Control.Applicative ((<$>))
+
 import Control.Monad.State (modify)
 import Control.Monad.Error (throwError)
 

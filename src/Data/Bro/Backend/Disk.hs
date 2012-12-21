@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
@@ -11,13 +11,14 @@ import Data.Binary (Binary, encodeFile, decodeFile, put, get,
                     encode, decode)
 import Data.Int (Int64)
 import Data.Map (Map)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust)
 import System.Directory (doesFileExist, removeFile)
-import System.IO (IOMode(..), SeekMode(..), withBinaryFile, openFile, hSeek, hClose)
+import System.IO (IOMode(..), SeekMode(..))
 import System.FilePath ((</>))
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
+import qualified System.IO as IO
 
 import Control.Monad.Error (throwError, strMsg)
 import Control.Monad.State (gets, modify)
@@ -27,6 +28,7 @@ import Data.Default (def)
 import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
+import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
@@ -47,7 +49,7 @@ instance Backend DiskBackend where
         modifyBackend $ \b@(DiskBackend { .. }) ->
             b { diskTables = M.insert name table diskTables }
         diskRoot <- gets diskRoot
-        liftIO $! withBinaryFile
+        liftIO $! IO.withBinaryFile
             (diskRoot </> S.unpack name) WriteMode (\_ -> return ())
       where
         table :: Table
@@ -84,14 +86,14 @@ instance Query DiskBackend where
             return $! go [] bytes rowSize1 tabSize
       where
         go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
-        go xs _bytes _rowSize1 0 = reverse xs
-        go xs bytes rowSize1 i =
+        go rows _bytes _rowSize1 0 = reverse rows
+        go rows bytes rowSize1 i =
             case decode . unwrap $ L.take rowSize1 bytes of
-                x@(Row { rowIsDeleted = True }) ->
+                Row { rowIsDeleted = True } ->
                     -- Note(Sergei): skip deleted rows.
-                    go xs (L.drop rowSize1 bytes) rowSize1 (i - 1)
-                x ->
-                    x `seq` go (x:xs) (L.drop rowSize1 bytes) rowSize1 (i - 1)
+                    go rows (L.drop rowSize1 bytes) rowSize1 (i - 1)
+                row ->
+                    row `seq` go (row:rows) (L.drop rowSize1 bytes) rowSize1 (i - 1)
 
         unwrap :: L.ByteString -> L.ByteString
         unwrap = L.tail . L.dropWhile (/= 0xff)
@@ -107,37 +109,34 @@ instance Query DiskBackend where
     insertInto _name _row = error "Inserting existing Row"
 
     update name exprs c = do
-        table@(Table { tabSchema = (_, rowSize0) }) <- fetchTable name
-        rows <- select name (Projection []) c
-        let newRows = map (transformRow table exprs) rows
-        diskRoot <- gets diskRoot
-        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
-        rewriteRows hTbl rowSize0 newRows
-        liftIO $! hClose hTbl
-        return $ length newRows
+        table <- fetchTable name
+        rows  <- map (transformRow table exprs) <$> select name (Projection []) c
+        rewriteRows table rows
 
-    delete name cond = do
-        Table { tabSchema = (_, rowSize0) } <- fetchTable name
-        rows <- select name (Projection []) cond
-        let newRows = map (\r -> r { rowIsDeleted = True } ) rows
-        diskRoot <- gets diskRoot
-        hTbl <- liftIO $! openFile (diskRoot </> S.unpack name) ReadWriteMode
-        rewriteRows hTbl rowSize0 newRows
-        liftIO $! hClose hTbl
-        return $ length newRows
+    delete name c = do
+        table <- fetchTable name
+        rows  <- map (\r -> r { rowIsDeleted = True }) <$>
+                 select name (Projection []) c
+        rewriteRows table rows
 
--- rewriteRows :: Handle -> Int -> [Row] -> [Row]
-rewriteRows handle rowSz (row:rows) = do
-	let bytes = wrap rowSz (encode row)
-	liftIO $! putStrLn (decode bytes)
-	let offset = rowSz * ((fromJust $ rowId row) - 1) --seems that we have indexes from 1?
-	writeBytes handle bytes (fromIntegral offset)
-	rewriteRows handle rowSz rows
-rewriteRows _ _ [] = return ()
-
-writeBytes handle bytes off = do
-	liftIO $! hSeek handle AbsoluteSeek off
-	liftIO $! L.hPut handle bytes
+rewriteRows :: Table -> [Row] -> Bro BackendError DiskBackend Int
+rewriteRows table@(Table { tabName }) rows = do
+    diskRoot <- gets diskRoot
+    liftIO $! IO.withBinaryFile
+        (diskRoot </> S.unpack tabName)
+        ReadWriteMode
+        (\h -> mapM_ (go h table) rows >> return (length rows))
+  where
+    go :: IO.Handle -> Table -> Row -> IO ()
+    go h (Table { tabSchema = (_, rowSize0) }) row
+        | Row { rowId = Just rowId0 } <- row =
+            let bytes  = wrap rowSize0 (encode row)
+                -- Note(Sergei): rows are indexed from '1'.
+                offset = fromIntegral $ rowSize0 * (rowId0 - 1)
+            in do
+                IO.hSeek h AbsoluteSeek offset
+                L.hPut h bytes
+        | otherwise = error "can't update row without row id"
 
 -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
 -- where @\xff@ starts data segment. A given chunk is expected to
