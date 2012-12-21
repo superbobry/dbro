@@ -64,14 +64,14 @@ withTable name f = f =<< fetchTable name
 {-# INLINE withTable #-}
 
 transformRow :: Table -> [(ColumnName, Expr)] -> Row -> Row
-transformRow (Table { tabSchema = (schema, _) }) es r@(Row { rowData }) =
+transformRow (Table { tabSchema }) es r@(Row { rowData }) =
     r { rowData = map transform pairs }
   where
     pairs :: [(ColumnName, ColumnValue)]
     pairs = zip names rowData
 
     names :: [ColumnName]
-    names = map fst schema
+    names = map fst tabSchema
 
     transform :: (ColumnName, ColumnValue) -> ColumnValue
     transform (name, v) = case lookup name es of
@@ -79,18 +79,18 @@ transformRow (Table { tabSchema = (schema, _) }) es r@(Row { rowData }) =
         Nothing -> v
 
 filterRows :: Table -> Condition -> [Row] -> [Row]
-filterRows (Table { tabSchema = (schema, _) }) c = filter f where
+filterRows (Table { tabSchema }) c = filter f where
   names :: [ColumnName]
-  names = map fst schema
+  names = map fst tabSchema
 
   f :: Row -> Bool
   f (Row { rowData }) = evalCondition (zip names rowData) c
 
 projectRows :: Table -> Projection -> [Row] -> [Row]
 projectRows _table (Projection []) = id
-projectRows (Table { tabSchema = (schema, _) }) (Projection p) = map f where
+projectRows (Table { tabSchema }) (Projection p) = map f where
   names :: [ColumnName]
-  names = map fst schema
+  names = map fst tabSchema
 
   f :: Row -> Row
   f r@(Row { rowData }) = r { rowData = map (evalExpr $ zip names rowData) p }

@@ -54,7 +54,8 @@ instance Backend DiskBackend where
       where
         table :: Table
         table = def { tabName = name
-                    , tabSchema = (schema, rowSize schema)
+                    , tabSchema = schema
+                    , tabRowSize = rowSize schema
                     }
 
     modifyTable name f = do
@@ -77,10 +78,10 @@ instance Backend DiskBackend where
 
 instance Query DiskBackend where
     selectAll name =
-        withTable name $ \(Table { tabSchema = (_, rowSize0), .. }) -> do
+        withTable name $ \(Table { .. }) -> do
             diskRoot <- gets diskRoot
             bytes <- liftIO $! L.readFile (diskRoot </> S.unpack tabName)
-            let rowSize1 = fromIntegral rowSize0
+            let rowSize1 = fromIntegral tabRowSize
             when (L.length bytes `mod` rowSize1 /= 0) $
                 throwError (strMsg "rows blob is not a multiple of row size")
             return $! go [] bytes rowSize1 tabSize
@@ -99,9 +100,9 @@ instance Query DiskBackend where
         unwrap = L.tail . L.dropWhile (/= 0xff)
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
-        Table { tabCounter, tabSchema = (_, rowSize0) } <- fetchTable name
+        Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = wrap rowSize0 . encode $! row { rowId = Just tabCounter }
+        let bytes = wrap tabRowSize . encode $! row { rowId = Just tabCounter }
         liftIO $! L.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
@@ -131,11 +132,11 @@ rewriteRows table@(Table { tabName }) rows = do
         (\h -> mapM_ (go h table) rows >> return (length rows))
   where
     go :: IO.Handle -> Table -> Row -> IO ()
-    go h (Table { tabSchema = (_, rowSize0) }) row
+    go h (Table { tabRowSize }) row
         | Row { rowId = Just rowId0 } <- row =
-            let bytes  = wrap rowSize0 (encode row)
+            let bytes  = wrap tabRowSize (encode row)
                 -- Note(Sergei): rows are indexed from '1'.
-                offset = fromIntegral $ rowSize0 * (rowId0 - 1)
+                offset = fromIntegral $ tabRowSize * (rowId0 - 1)
             in do
                 IO.hSeek h AbsoluteSeek offset
                 L.hPut h bytes

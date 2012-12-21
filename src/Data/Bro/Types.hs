@@ -80,21 +80,27 @@ type TableName = S.ByteString
 type TableSchema = [(ColumnName, ColumnType)]
 
 data Table = Table { tabName    :: TableName
-                   , tabSchema  :: !(TableSchema, Int)
                    , tabCounter :: {-# UNPACK #-} !RowId
+                   , tabSchema  :: !TableSchema
+                   , tabRowSize :: {-# UNPACK #-} !Int
                    , tabSize    :: {-# UNPACK #-} !Int
                    } deriving (Eq, Show)
 
 instance Binary Table where
-    put (Table { .. }) =
-        put tabName >> put tabSchema >> put tabCounter >> put tabSize
+    put (Table { .. }) = do
+        put tabName
+        put tabCounter
+        put tabSchema
+        put tabRowSize
+        put tabSize
 
-    get = Table <$> get <*> get <*> get <*> get
+    get = Table <$> get <*> get <*> get <*> get <*> get
 
 instance Default Table where
     def = Table { tabName = S.empty
-                , tabSchema = ([], 0)
                 , tabCounter = 1
+                , tabSchema = []
+                , tabRowSize = 0
                 , tabSize = 0
                 }
 

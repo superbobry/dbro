@@ -36,7 +36,8 @@ instance Backend MemoryBackend where
       where
         table :: Table
         table = def { tabName = name
-                    , tabSchema = (schema, rowSize schema)
+                    , tabSchema = schema
+                    , tabRowSize = rowSize schema
                     }
 
     modifyTable name f = withTable name $ \table ->

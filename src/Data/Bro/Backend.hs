@@ -25,7 +25,7 @@ exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
     Select name p c -> Selected <$> Backend.select name p c
     InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
-        remapped <- remap (fst tabSchema) pairs
+        remapped <- remap tabSchema pairs
         Inserted <$> Backend.insertInto name (def { rowData = remapped })
     Update name exprs cond -> withTable name $ \_table ->
         Updated <$> Backend.update name exprs cond
