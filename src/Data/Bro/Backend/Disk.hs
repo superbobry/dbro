@@ -117,7 +117,10 @@ instance Query DiskBackend where
         table <- fetchTable name
         rows  <- map (\r -> r { rowIsDeleted = True }) <$>
                  select name (Projection []) c
-        rewriteRows table rows
+        affected <- rewriteRows table rows
+        modifyTable name $ \table@(Table { tabSize }) ->
+            table { tabSize = tabSize - affected }
+        return $! affected
 
 rewriteRows :: Table -> [Row] -> Bro BackendError DiskBackend Int
 rewriteRows table@(Table { tabName }) rows = do
