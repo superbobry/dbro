@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (forever, void, unless)
+import Control.Monad (forever, unless)
 import Text.Printf (printf)
 import qualified System.IO as IO
 
@@ -20,7 +20,7 @@ import Data.Bro.Backend.Class (Backend(..), Query)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Result (BackendResult(..))
 import Data.Bro.Backend.Disk (makeDiskBackend)
-import Data.Bro.Monad (Bro, runBro)
+import Data.Bro.Monad (Bro, runBro_)
 import Data.Bro.Parser (statement)
 import Data.Bro.Types (Row(..), ColumnValue(..))
 
@@ -35,7 +35,7 @@ instance ToRecord Row where
     {-# INLINE toRecord #-}
 
 main :: IO ()
-main = void $ runBro (forever process) =<< makeDiskBackend "." where
+main = runBro_ (forever process) =<< makeDiskBackend "." where
   process :: (Backend b, Query b) => Bro BackendError b ()
   process = flip catchError handleError $ do
       l   <- liftIO S.getLine
