@@ -1,74 +1,77 @@
 #include "btree.h"
+#include <cstring>
 #include <iostream>
-
-
-
-btree::btree(const char* path):m_Path(path) {}
-void btree::add(key_type key, value_type val) 
-{
-	std::cout << "add: " << key << " " << val << " ";
-	std::cout << m_Path << std::endl;
-}
-
-void btree::erase_all(key_type key) 
-{
-	std::cout << "erase_all: " << key << std::endl;
-}
-
-void btree::erase(key_type key_tip, value_type val) 
-{
-	std::cout << "erase: " << key_tip << " " << val << std::endl;
-}
-
-int	 btree::find(key_type key) 
-{
-	std::cout << "find: " << key << std::endl; 
-	return 42;
-}
-
-int* btree::find_range(key_type begin, key_type end) 
-{
-    int* ret = new int[3];
-    ret[0] = 42;
-    ret[1] = 43;
-    ret[2] = 0;
-	std::cout << "find_range: " << begin << " " << end << std::endl; 
-    return ret;
-}
-
-void btree::print_path() 
-{
-	std::cout << "path: " << m_Path << std::endl;
-}
+#include <stdexcept>
 
 ///////////////////////////////////
-btree* btree_create(const char* path)
+BTTableClass* btree_create(const char* path)
 {
-	std::cout << "Hello from cpp\n";
-	return new btree(path);
+	return new BTTableClass(path);
 }
 
-void btree_add(btree* tree, btree::key_type key, btree::value_type val) 	
+void btree_close(BTTableClass* tree)
 {
-	tree->add(key, val);
+	delete tree;
 }
 
-void btree_erase_all(btree* tree, btree::key_type key) 						
+void btree_add(BTTableClass* tree, int key, int val) 	
 {
-	tree->erase_all(key);
+	ItemType item; 
+	memset(item.KeyField, 0, sizeof(ItemType::KeyField));
+	memcpy(item.KeyField, reinterpret_cast<char*>(&key), sizeof(int)); 
+	memset(item.DataField, 0, sizeof(ItemType::DataField));
+	memcpy(item.DataField, reinterpret_cast<char*>(&val), sizeof(int)); 
+	try
+	{
+		tree->Insert(item);
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cerr << "Error inserting in btree: " << e.what() << std::endl;
+	}
 }
 
-void btree_erase(btree* tree, btree::key_type key_tip, btree::value_type val)	
+void btree_erase_all(BTTableClass* tree, int key) 						
 {
-	tree->erase(key_tip, val);
+	//tree->erase_all(key);
 }
 
-btree::value_type btree_find(btree* tree, btree::key_type key)						
+void btree_erase(BTTableClass* tree, int key_tip, int val)	
 {
-	return tree->find(key);
+	//tree->erase(key_tip, val);
 }
 
-btree::value_type* btree_find_range(btree* tree, btree::key_type begin, btree::key_type end)	
+int btree_find(BTTableClass* tree, int key)						
 {
-	return tree->find_range(begin, end);
+	KeyFieldType treekey; 
+	memset(treekey, 0, sizeof(KeyFieldType));
+	memcpy(treekey, reinterpret_cast<char*>(&key), sizeof(int)); 
+
+	ItemType data;
+	bool found = false;
+	try
+	{
+		found = tree->Retrieve(treekey, data);
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cerr << "Error inserting in btree: " << e.what() << std::endl;
+		return 0;
+	}
+
+	if (found)
+	{
+		int ret = *(reinterpret_cast<int*>(data.DataField));
+		return ret;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+int* btree_find_range(BTTableClass* tree, int begin, int end)	
+{
+	return new int(0);
+	//return tree->find_range(begin, end);
 }
