@@ -16,7 +16,7 @@ module Data.Bro.Types
   ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Data.Binary (Binary(..), get, put)
+import Data.Serialize (Serialize(..), get, put)
 import Data.Maybe (isNothing)
 import Data.Int (Int32)
 import Data.Word (Word8)
@@ -37,7 +37,7 @@ instance Default Row where
               , rowIsDeleted = False
               }
 
-instance Binary Row where
+instance Serialize Row where
     put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
     put (Row { .. }) = put rowId >> put rowData >> put rowIsDeleted
 
@@ -49,7 +49,7 @@ data ColumnType = IntegerColumn
                 | VarcharColumn Word8
     deriving (Eq, Show)
 
-instance Binary ColumnType where
+instance Serialize ColumnType where
     put IntegerColumn = put 'i'
     put DoubleColumn  = put 'd'
     put (VarcharColumn l) = put 'v' >> put l
@@ -65,7 +65,7 @@ data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
                  | VarcharValue S.ByteString
     deriving (Eq, Ord, Show)
 
-instance Binary ColumnValue where
+instance Serialize ColumnValue where
     put (IntegerValue v) = put 'i' >> put v
     put (DoubleValue d)  = put 'd' >> put d
     put (VarcharValue s) = put 'v' >> put s
@@ -86,7 +86,7 @@ data Table = Table { tabName    :: TableName
                    , tabSize    :: {-# UNPACK #-} !Int
                    } deriving (Eq, Show)
 
-instance Binary Table where
+instance Serialize Table where
     put (Table { .. }) = do
         put tabName
         put tabCounter

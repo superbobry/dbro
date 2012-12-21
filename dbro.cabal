@@ -51,10 +51,12 @@ library
     Data.Bro.Parser
 
   build-depends:    base
-                  , ghc == 7.6.*
                   , safe == 0.3.*
                   , attoparsec == 0.10.*
                   , bytestring == 0.10.*
+                  , conduit == 0.5.*
+                  , cereal == 0.3.5.*
+                  , cereal-conduit == 0.6
                   , containers == 0.5.*
                   , mtl == 2.1.*
                   , binary == 0.5.*

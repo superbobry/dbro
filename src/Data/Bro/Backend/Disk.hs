@@ -7,8 +7,7 @@ module Data.Bro.Backend.Disk
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
-import Data.Binary (Binary, encodeFile, decodeFile, put, get,
-                    encode, decode)
+import Data.Serialize (Serialize, put, get, encodeLazy, decodeLazy)
 import Data.Int (Int64)
 import Data.Map (Map)
 import Data.Maybe (isJust)
@@ -35,7 +34,7 @@ data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)
                                }
 
-instance Binary DiskBackend where
+instance Serialize DiskBackend where
     put (DiskBackend { .. }) = put diskRoot >> put diskTables
 
     get = DiskBackend <$> get <*> get
@@ -70,7 +69,7 @@ instance Backend DiskBackend where
         -- 'get' from 'Data.Binary'.
         diskRoot   <- gets diskRoot
         diskTables <- gets diskTables
-        liftIO $! encodeFile (diskRoot </> "_index") diskTables
+        liftIO $! L.writeFile  (diskRoot </> "_index") (encodeLazy diskTables)
 
     deleteTable name = withTable name $ \Table { tabName } -> do
         diskRoot <- gets diskRoot
@@ -89,12 +88,13 @@ instance Query DiskBackend where
         go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
         go rows _bytes _rowSize1 0 = reverse rows
         go rows bytes rowSize1 i =
-            case decode . unwrap $ L.take rowSize1 bytes of
-                Row { rowIsDeleted = True } ->
+            case decodeLazy . unwrap $ L.take rowSize1 bytes of
+                Right (Row { rowIsDeleted = True }) ->
                     -- Note(Sergei): skip deleted rows.
                     go rows (L.drop rowSize1 bytes) rowSize1 (i - 1)
-                row ->
+                Right row ->
                     row `seq` go (row:rows) (L.drop rowSize1 bytes) rowSize1 (i - 1)
+                Left e -> error e
 
         unwrap :: L.ByteString -> L.ByteString
         unwrap = L.tail . L.dropWhile (/= 0xff)
@@ -102,7 +102,7 @@ instance Query DiskBackend where
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = wrap tabRowSize . encode $! row { rowId = Just tabCounter }
+        let bytes = wrap tabRowSize . encodeLazy $! row { rowId = Just tabCounter }
         liftIO $! L.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
@@ -134,7 +134,7 @@ rewriteRows table@(Table { tabName }) rows = do
     go :: IO.Handle -> Table -> Row -> IO ()
     go h (Table { tabRowSize }) row
         | Row { rowId = Just rowId0 } <- row =
-            let bytes  = wrap tabRowSize (encode row)
+            let bytes  = wrap tabRowSize (encodeLazy row)
                 -- Note(Sergei): rows are indexed from '1'.
                 offset = fromIntegral $ tabRowSize * (rowId0 - 1)
             in do
@@ -157,8 +157,13 @@ wrap n s =
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do
     exists <- doesFileExist index
-    if exists
-        then DiskBackend root <$> decodeFile index
-        else return $! DiskBackend root M.empty
+    tables <- if exists
+              then do
+                  bytes <- L.readFile index
+                  case decodeLazy bytes of
+                      Left err -> fail err
+                      Right i  -> return i
+              else return M.empty
+    return $! DiskBackend root tables
   where
     index = root </> "_index"
