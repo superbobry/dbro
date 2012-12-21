@@ -9,6 +9,7 @@ import qualified Data.ByteString.Char8 as S
 import qualified Data.Map as M
 
 import Control.Monad.Error (throwError)
+import Data.Default (def)
 
 import Data.Bro.Backend.Class (Backend, Query(..), withTable)
 import Data.Bro.Backend.Error (BackendError(..))
@@ -25,11 +26,10 @@ exec s = case s of
     Select name p c -> Selected <$> Backend.select name p c
     InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
         remapped <- remap (fst tabSchema) pairs
-        let row = Row { rowId = Nothing, rowData = remapped, rowIsDeleted = False }
-        Inserted <$> Backend.insertInto name row
+        Inserted <$> Backend.insertInto name (def { rowData = remapped })
     Update name exprs cond -> withTable name $ \_table ->
         Updated <$> Backend.update name exprs cond
-    Delete name cond -> withTable name $ \_table -> 
+    Delete name cond -> withTable name $ \_table ->
         Deleted <$> Backend.delete name cond
 
 remap :: Backend b

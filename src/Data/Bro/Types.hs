@@ -26,10 +26,16 @@ import Data.Default (Default(..))
 
 type RowId = Int
 
-data Row = Row { rowId   :: Maybe RowId
-               , rowData :: ![ColumnValue]
+data Row = Row { rowId        :: Maybe RowId
+               , rowData      :: ![ColumnValue]
                , rowIsDeleted :: Bool
                } deriving (Eq, Show)
+
+instance Default Row where
+    def = Row { rowId = Nothing
+              , rowData = []
+              , rowIsDeleted = False
+              }
 
 instance Binary Row where
     put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
