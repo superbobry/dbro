@@ -48,6 +48,9 @@ foreign import ccall "btree.h btree_find_range"
 foreign import ccall "btree.h btree_close"
     c_btreeClose :: BTree -> IO ()
 
+foreign import ccall "btree.h btree_free"
+	c_btreeFree :: (Ptr BVal) -> IO ()
+
 btreeCreate :: String -> IO BTree
 btreeCreate path = withCString path c_btreeCreate
 
@@ -61,20 +64,23 @@ btreeEraseAll :: BTree -> BKey -> IO ()
 btreeEraseAll tree key = c_btreeEraseAll tree key
 
 btreeErase :: BTree -> BKey -> BVal -> IO ()
-btreeErase tree key val = c_btreeErase tree key val
+btreeErase tree key val = undefined --c_btreeErase tree key val (not implemented yet)
 
 btreeFind :: BTree -> BKey -> IO (Maybe BVal)
 btreeFind tree key = c_btreeFind tree key >>=
                         \f -> return $ if f /= bNull then Just f else Nothing
 
 btreeFindRange :: BTree -> BKey -> BKey -> IO [BVal]
-btreeFindRange tree beg end = c_btreeFindRange tree beg end >>=
-                              \p -> resultList p
-                              where
-                                resultList ptr = do
-                                    val <- peek ptr
-                                    if val /= bNull
-                                        then resultList (plusPtr ptr szInt) >>= \l ->
-                                            return $ val : l
-                                        else return []
+btreeFindRange tree beg end = do
+    ptr <- c_btreeFindRange tree beg end
+    list <- resultList ptr
+    c_btreeFree ptr
+    return list
+  where
+    resultList ptr = do
+        val <- peek ptr
+        if val /= bNull
+            then resultList (plusPtr ptr szInt) >>= \l ->
+                return $ val : l
+            else return []
 

@@ -18,12 +18,10 @@
 #include "btree_impl.h"
 #include <cstdlib>
 #include <cstring>
-#include <iostream> 
+#include <iostream>
 #include <stdexcept>
+#include <algorithm>
 #include <sys/stat.h>
-#include <cassert>
-
-//#define DEBUG
 
 using namespace std;
 
@@ -34,12 +32,16 @@ using namespace std;
 */
 namespace
 {
-	void Error(const char * msg)
-	{
-		//cerr << msg << endl;
-		throw std::runtime_error(msg);
-		//exit(1);
-	}
+    //class ItemExists{};
+    void Error(const char * msg)
+    {
+        throw std::runtime_error(msg);
+    }
+
+    struct Compare
+    {
+        bool operator()(const ItemType& k1, const ItemType& k2) {return k1.key < k2.key;}
+    };
 }
 
 
@@ -54,9 +56,9 @@ void BTTableClass::Dump(void)
    int k;
    long p;
 
-   cout << endl << "Root is node (record) number " << Root << endl;
+   cout << endl << "Root is node (record) number " << m_Root << endl;
 
-   for (p = 0; p <= NumNodes; p++)
+   for (p = 0; p <= m_NumNodes; p++)
    {
       if (p % 4 == 3)
       {
@@ -64,28 +66,31 @@ void BTTableClass::Dump(void)
          cin.get();
       }
 
-      DataFile.seekg(p * NodeSize, ios::beg);
-      DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+      m_DataFile.seekg(p * m_NodeSize, ios::beg);
+      m_DataFile.read(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
       if (p == 0)
       {
          cout << "Node 0 is not part of tree, contains this data:" << endl;
-         cout << "   NumItems = " << CurrentNode.Branch[0] << endl;
-         cout << "   NumNodes = " << CurrentNode.Branch[1] << endl;
-         cout << "   Root = " << CurrentNode.Branch[2] << endl;
+         cout << "   NumItems = " << m_CurrentNode.Branch[0] << endl;
+         cout << "   NumNodes = " << m_CurrentNode.Branch[1] << endl;
+         cout << "   Root = " << m_CurrentNode.Branch[2] << endl;
       }
       else
       {
          cout << "Dump of node number " << p << endl;
-         cout << "   Count: " << CurrentNode.Count << endl;
+         cout << "   Count: " << m_CurrentNode.Count << endl;
 
          cout << "   Keys: ";
-         for (k = 0; k < CurrentNode.Count; k++)
-            cout << CurrentNode.Key[k].KeyField << " ";
+         for (k = 0; k < m_CurrentNode.Count; k++)
+         {
+             //int rKey = *(reinterpret_cast<int*>(m_CurrentNode.Key[k].KeyField));
+             cout << m_CurrentNode.Key[k].key << " ";
+         }
 
          cout << endl << "   Branches: ";
-         for (k = 0; k <= CurrentNode.Count; k++)
-            cout << CurrentNode.Branch[k] << " ";
+         for (k = 0; k <= m_CurrentNode.Count; k++)
+            cout << m_CurrentNode.Branch[k] << " ";
          cout << endl << endl;
       }
    }
@@ -99,15 +104,16 @@ void BTTableClass::Dump(void)
             could be removed once debugging is complete.
    Return:  Nothing.
 */
+/*
 void BTTableClass::Check(void)
 {
-   KeyFieldType Last;
+   KeyType Last;
 
-   Last[0] = '*';
-   Last[1] = '\0';
-   CheckSubtree(Root, Last);
+   //Last[0] = '*';
+   //Last[1] = '\0';
+   CheckSubtree(m_Root, Last);
 }
-
+*/
 
 /* Given:   The implicit BTTableClass object plus:
             Current   A pseudopointer to the root node of the subtree.
@@ -121,6 +127,7 @@ void BTTableClass::Check(void)
             could be removed once debugging is complete.
    Return:  Nothing.
 */
+/*
 void BTTableClass::CheckSubtree(long Current, KeyFieldType & Last)
 {
    NodeType Node;
@@ -129,8 +136,8 @@ void BTTableClass::CheckSubtree(long Current, KeyFieldType & Last)
    if (Current == NilPtr)
       return;
 
-   DataFile.seekg(Current * NodeSize, ios::beg);
-   DataFile.read(reinterpret_cast <char *> (&Node), NodeSize);
+   m_DataFile.seekg(Current * m_NodeSize, ios::beg);
+   m_DataFile.read(reinterpret_cast <char *> (&Node), m_NodeSize);
    for (k = 0; k < Node.Count; k++)
    {
       CheckSubtree(Node.Branch[k], Last);
@@ -145,7 +152,7 @@ void BTTableClass::CheckSubtree(long Current, KeyFieldType & Last)
    }
    CheckSubtree(Node.Branch[Node.Count], Last);
 }
-
+*/
 
 /* Given:   Mode      A char(r or w) to indicate read or write mode.
             FileName  A char string holding the external filename.
@@ -159,7 +166,7 @@ void BTTableClass::CheckSubtree(long Current, KeyFieldType & Last)
 */
 BTTableClass::BTTableClass(const char * FileName)
 {
-	NodeSize = sizeof(NodeType);
+	m_NodeSize = sizeof(NodeType);
 
 	struct stat buf;
     if (stat(FileName, &buf) == -1)
@@ -167,28 +174,28 @@ BTTableClass::BTTableClass(const char * FileName)
 		std::ofstream file(FileName);
 	}
 
-	DataFile.open(FileName, ios::in | ios::out | ios::binary);
-	DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+	m_DataFile.open(FileName, ios::in | ios::out | ios::binary);
+	m_DataFile.read(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
-    if (DataFile.fail())
+    if (m_DataFile.fail())
     {   
 		// assume the Btree is empty if you cannot read from the file
-		DataFile.clear();
-        NumItems = 0;
-        NumNodes = 0;
-        Root = NilPtr;
-		CurrentNode.Branch[0] = NumItems;
-		CurrentNode.Branch[1] = NumNodes;
-		CurrentNode.Branch[2] = Root;
+		m_DataFile.clear();
+        m_NumItems = 0;
+        m_NumNodes = 0;
+        m_Root = NIL_PTR;
+		m_CurrentNode.Branch[0] = m_NumItems;
+		m_CurrentNode.Branch[1] = m_NumNodes;
+		m_CurrentNode.Branch[2] = m_Root;
 			
-		DataFile.seekp(0, ios::beg);
-       	DataFile.write(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+		m_DataFile.seekp(0, ios::beg);
+       	m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 	}
 	else
 	{
-       	NumItems = CurrentNode.Branch[0];
-       	NumNodes = CurrentNode.Branch[1];
-       	Root = CurrentNode.Branch[2];
+       	m_NumItems = m_CurrentNode.Branch[0];
+       	m_NumNodes = m_CurrentNode.Branch[1];
+       	m_Root = m_CurrentNode.Branch[2];
 	}
 }
 
@@ -206,11 +213,11 @@ BTTableClass::~BTTableClass(void)
    #endif
 
    //  Be sure to write out the updated node zero:
-   CurrentNode.Branch[0] = NumItems;
-   CurrentNode.Branch[1] = NumNodes;
-   CurrentNode.Branch[2] = Root;
-   DataFile.seekp(0, ios::beg);
-   DataFile.write(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+   m_CurrentNode.Branch[0] = m_NumItems;
+   m_CurrentNode.Branch[1] = m_NumNodes;
+   m_CurrentNode.Branch[2] = m_Root;
+   m_DataFile.seekp(0, ios::beg);
+   m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
    #ifdef DEBUG
 	  cout << "W";
@@ -219,8 +226,6 @@ BTTableClass::~BTTableClass(void)
    #ifdef DEBUG
       Dump();
    #endif
-
-   //DataFile.close();
 }
 
 
@@ -231,7 +236,7 @@ BTTableClass::~BTTableClass(void)
 */
 bool BTTableClass::Empty(void)
 {   // we could read node zero, but this is faster:
-   return (Root == NilPtr);
+   return (m_Root == NIL_PTR);
 }
 
 
@@ -244,32 +249,38 @@ bool BTTableClass::Empty(void)
                           which Target would fit.  (If Target fits to the
                           left of the first key, returns index of -1.)
 */
-bool BTTableClass::SearchNode(const KeyFieldType Target, int & Location) const
+
+
+
+bool BTTableClass::SearchNode(const KeyType& Target, NodeType& node, int& Location) const
 {
-   	bool Found = false;
+    bool Found = false;
 
-   	//if (strcmp(Target, CurrentNode.Key[0].KeyField) < 0)
-	if (memcmp(Target, CurrentNode.Key[0].KeyField, KeyFieldMax) < 0)
-	{
-      	Location = -1;
-	}
-   	else
-   	{ // do a sequential search, right to left:
-      	Location = CurrentNode.Count - 1;
-      	//while ((strcmp(Target, CurrentNode.Key[Location].KeyField) < 0) && (Location > 0))
-		while (memcmp(Target, CurrentNode.Key[Location].KeyField, KeyFieldMax) < 0 && Location > 0)
-		{
-        	--Location;
-		}
+    if (Target < node.Key[0].key)
+    {
+        Location = -1;
+    }
+    else
+    {
+        ItemType dummy(Target, 0);
+        ItemType* found = std::lower_bound(node.Key, node.Key + node.Count, dummy, Compare());
+        Location = found - node.Key;
+        /*Location = node.Count - 1;
+        while (Target < node.Key[Location].key && Location > 0)
+        {
+            --Location;
+        }*/
 
-		if (memcmp(Target, CurrentNode.Key[Location].KeyField, KeyFieldMax) == 0)
-      	//if (strcmp(Target, CurrentNode.Key[Location].KeyField) == 0)
-		{
-         	Found = true;
-		}
-   	}
-
-   	return Found;
+        if (Target == node.Key[Location].key)
+        {
+            Found = true;
+        }
+        else
+        {
+            --Location;
+        }
+    }
+    return Found;
 }
 
 
@@ -327,54 +338,54 @@ void BTTableClass::Split(const ItemType & CurrentItem, long CurrentRight,
       cout << "S";
    #endif
 
-   if (Location < MinKeys)
-      Median = MinKeys;
+   if (Location < MIN_KEYS)
+      Median = MIN_KEYS;
    else
-      Median = MinKeys + 1;
+      Median = MIN_KEYS + 1;
 
-   DataFile.seekg(CurrentRoot * NodeSize, ios::beg);
-   DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+   m_DataFile.seekg(CurrentRoot * m_NodeSize, ios::beg);
+   m_DataFile.read(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
    #ifdef DEBUG
       cout << "R";
    #endif
 
-   for (j = Median; j < MaxKeys; j++)
+   for (j = Median; j < MAX_KEYS; j++)
    {  // move half of the items to the RightNode
-      RightNode.Key[j - Median] = CurrentNode.Key[j];
-      RightNode.Branch[j - Median + 1] = CurrentNode.Branch[j + 1];
+      RightNode.Key[j - Median] = m_CurrentNode.Key[j];
+      RightNode.Branch[j - Median + 1] = m_CurrentNode.Branch[j + 1];
    }
 
-   RightNode.Count = MaxKeys - Median;
-   CurrentNode.Count = Median;   // is then incremented by AddItem
+   RightNode.Count = MAX_KEYS - Median;
+   m_CurrentNode.Count = Median;   // is then incremented by AddItem
 
    // put CurrentItem in place
-   if (Location < MinKeys)
-      AddItem(CurrentItem, CurrentRight, CurrentNode, Location + 1);
+   if (Location < MIN_KEYS)
+      AddItem(CurrentItem, CurrentRight, m_CurrentNode, Location + 1);
    else
       AddItem(CurrentItem, CurrentRight, RightNode,
          Location - Median + 1);
 
-   NewItem = CurrentNode.Key[CurrentNode.Count - 1];
-   RightNode.Branch[0] = CurrentNode.Branch[CurrentNode.Count];
-   CurrentNode.Count--;
+   NewItem = m_CurrentNode.Key[m_CurrentNode.Count - 1];
+   RightNode.Branch[0] = m_CurrentNode.Branch[m_CurrentNode.Count];
+   m_CurrentNode.Count--;
 
-   DataFile.seekp(CurrentRoot * NodeSize, ios::beg);
-   DataFile.write(reinterpret_cast <char *> (&CurrentNode), NodeSize);
-
-   #ifdef DEBUG
-      cout << "W";
-   #endif
-
-   NumNodes++;
-   NewRight = NumNodes;
-   DataFile.seekp(NewRight * NodeSize, ios::beg);
-   DataFile.write(reinterpret_cast <char *> (&RightNode), NodeSize);
+   m_DataFile.seekp(CurrentRoot * m_NodeSize, ios::beg);
+   m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
    #ifdef DEBUG
       cout << "W";
    #endif
-} 
+
+   m_NumNodes++;
+   NewRight = m_NumNodes;
+   m_DataFile.seekp(NewRight * m_NodeSize, ios::beg);
+   m_DataFile.write(reinterpret_cast <char *> (&RightNode), m_NodeSize);
+
+   #ifdef DEBUG
+      cout << "W";
+   #endif
+}
 
 /* Given:  The implicit BTTableClass object as well as:
            CurrentItem   The item to be inserted into the B-tree table.
@@ -396,57 +407,71 @@ void BTTableClass::PushDown(const ItemType & CurrentItem, long CurrentRoot,
 {
    int Location;
 
-   #ifdef DEBUG
-      cout << "P";
-   #endif
+    #ifdef DEBUG
+    cout << "P";
+    #endif
 
-   if (CurrentRoot == NilPtr)   // stopping case
-   {   // cannot insert into empty tree
-      MoveUp = true;
-      NewItem = CurrentItem;
-      NewRight = NilPtr;
-   }
-   else   // recursive case
-   {
-      DataFile.seekg(CurrentRoot * NodeSize, ios::beg);
-      DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+    if (CurrentRoot == NIL_PTR)   // stopping case
+    {   // cannot insert into empty tree
+        MoveUp = true;
+        NewItem = CurrentItem;
+        NewRight = NIL_PTR;
+    }
+    else   // recursive case
+    {
+        m_DataFile.seekg(CurrentRoot * m_NodeSize, ios::beg);
+        m_DataFile.read(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
-      #ifdef DEBUG
-         cout << "R";
-      #endif
+        #ifdef DEBUG
+        cout << "R";
+        #endif
 
-      if (SearchNode(CurrentItem.KeyField, Location))
-         Error("Error: attempt to put a duplicate into B-tree");
+        if (SearchNode(CurrentItem.key, m_CurrentNode, Location))
+        {
+            if (!m_CurrentNode.Deleted[Location])
+            {
+                std::cerr << "Trying to insert duplicate key. Not supported yet :(" << std::endl;
+            }
+            else
+            {
+                m_CurrentNode.Deleted[Location] = false;
+                m_CurrentNode.Key[Location] = CurrentItem;
+                m_DataFile.seekp(CurrentRoot * m_NodeSize, ios::beg);
+                m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
+            }
+            MoveUp = false;
+            return;
+        }
 
-      PushDown(CurrentItem, CurrentNode.Branch[Location + 1], MoveUp, NewItem, NewRight);
+        PushDown(CurrentItem, m_CurrentNode.Branch[Location + 1], MoveUp, NewItem, NewRight);
 
-      if (MoveUp)
-      {
-          DataFile.seekg(CurrentRoot * NodeSize, ios::beg);
-          DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
-
-         #ifdef DEBUG
-            cout << "R";
-         #endif
-
-         if (CurrentNode.Count < MaxKeys)
-         {
-             MoveUp = false;
-             AddItem(NewItem, NewRight, CurrentNode, Location + 1);
-             DataFile.seekp(CurrentRoot * NodeSize, ios::beg);
-             DataFile.write(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+        if (MoveUp)
+        {
+            m_DataFile.seekg(CurrentRoot * m_NodeSize, ios::beg);
+            m_DataFile.read(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
             #ifdef DEBUG
-               cout << "W";
+            cout << "R";
             #endif
-         }
-         else
-         {
-             MoveUp = true;
-             Split(NewItem, NewRight, CurrentRoot, Location, NewItem, NewRight);
-         }
-      }
-   }
+
+            if (m_CurrentNode.Count < MAX_KEYS)
+            {
+                MoveUp = false;
+                AddItem(NewItem, NewRight, m_CurrentNode, Location + 1);
+                m_DataFile.seekp(CurrentRoot * m_NodeSize, ios::beg);
+                m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
+
+                #ifdef DEBUG
+                cout << "W";
+                #endif
+            }
+            else
+            {
+                MoveUp = true;
+                Split(NewItem, NewRight, CurrentRoot, Location, NewItem, NewRight);
+            }
+        }
+    }
 }
 
 
@@ -466,26 +491,26 @@ bool BTTableClass::Insert(const ItemType & Item)
       cout << "I";
    #endif
 
-   PushDown(Item, Root, MoveUp, NewItem, NewRight);
+   PushDown(Item, m_Root, MoveUp, NewItem, NewRight);
 
-   if (MoveUp)   // create a new root node
+   if (MoveUp)      // create a new root node
    {
-       CurrentNode.Count = 1;
-       CurrentNode.Key[0] = NewItem;
-       CurrentNode.Branch[0] = Root;
-       CurrentNode.Branch[1] = NewRight;
-       NumNodes++;
-       Root = NumNodes;
-       DataFile.seekp(NumNodes * NodeSize, ios::beg);
-       DataFile.write(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+       m_CurrentNode.Count = 1;
+       m_CurrentNode.Key[0] = NewItem;
+       m_CurrentNode.Branch[0] = m_Root;
+       m_CurrentNode.Branch[1] = NewRight;
+       m_NumNodes++;
+       m_Root = m_NumNodes;
+       m_DataFile.seekp(m_NumNodes * m_NodeSize, ios::beg);
+       m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
 
        #ifdef DEBUG
           cout << "W";
        #endif
    }
 
-   NumItems++;   // fixed 12/21/2001
-   return true;   // no reason not to assume success
+   ++m_NumItems;    // fixed 12/21/2001
+   return true;     // no reason not to assume success
 }
 
 
@@ -496,29 +521,98 @@ bool BTTableClass::Insert(const ItemType & Item)
             false otherwise.
             Item        The item were SearchKey was found.
 */
-bool BTTableClass::Retrieve(KeyFieldType SearchKey, ItemType & Item)
+bool BTTableClass::Retrieve(KeyType SearchKey, ItemType & Item)
 {
-   long CurrentRoot = Root;
-   bool Found = false;
+    long CurrentRoot = m_Root;
+    bool Found = false;
 
-   while ((CurrentRoot != NilPtr) && !Found)
-   {
-      DataFile.seekg(CurrentRoot * NodeSize, ios::beg);
-      DataFile.read(reinterpret_cast <char *> (&CurrentNode), NodeSize);
+    while (CurrentRoot != NIL_PTR)
+    {
+        m_DataFile.seekg(CurrentRoot * m_NodeSize, ios::beg);
+        m_DataFile.read(reinterpret_cast<char*>(&m_CurrentNode), m_NodeSize);
 
-      #ifdef DEBUG
-         cout << "R";
-      #endif
+        #ifdef DEBUG
+        cout << "R";
+        #endif
 
-	  int Location;
-      if (SearchNode(SearchKey, Location))
-      {
-         Found = true;
-         Item = CurrentNode.Key[Location];
-      }
-      else
-         CurrentRoot = CurrentNode.Branch[Location + 1];
-   }
+        int Location;
+        if (SearchNode(SearchKey, m_CurrentNode, Location))
+        {
+            if (!m_CurrentNode.Deleted[Location])
+            {
+                Found = true;
+                Item = m_CurrentNode.Key[Location];
+            }
+            break;
+        }
+        else
+        {
+           CurrentRoot = m_CurrentNode.Branch[Location + 1];
+        }
+    }
 
-   return Found;
+    return Found;
+}
+
+void BTTableClass::findRangeRecursive(long nodeId, KeyType keyBegin, KeyType keyEnd,
+                                        std::vector<ItemType>& items)
+{
+    NodeType node;
+    m_DataFile.seekg(nodeId * m_NodeSize, ios::beg);
+    m_DataFile.read(reinterpret_cast<char*>(&node), m_NodeSize);
+
+    int leftKeyPos = 0;
+    bool leftFound = SearchNode(keyBegin, node, leftKeyPos);
+
+    int rightKeyPos = 0;
+    SearchNode(keyEnd, node, rightKeyPos);
+
+    //std::cout << leftKeyPos << " " << rightKeyPos << " : ";
+
+    for (int i = leftKeyPos; i <= rightKeyPos; ++i)
+    {
+        long branch = node.Branch[i + 1];
+        if ((leftFound || branch == NIL_PTR) &&
+            i >= 0 && i < node.Count && !node.Deleted[i])
+        {
+            items.push_back(node.Key[i]);
+            //std::cout << "(" << i << "," << node.Key[i].key << ") ";
+        }
+        if (branch != NIL_PTR) findRangeRecursive(branch, keyBegin, keyEnd, items);
+    }
+    //std::cout << std::endl;
+}
+
+void BTTableClass::RetriveRange(KeyType keyBegin, KeyType keyEnd, std::vector<ItemType>& items)
+{
+    if (this->Empty()) return;
+    this->findRangeRecursive(m_Root, keyBegin, keyEnd, items);
+}
+
+void BTTableClass::DeleteItem(const KeyType& Key)
+{
+    long CurrentRoot = m_Root;
+
+    while (CurrentRoot != NIL_PTR)
+    {
+        m_DataFile.seekg(CurrentRoot * m_NodeSize, ios::beg);
+        m_DataFile.read(reinterpret_cast<char*>(&m_CurrentNode), m_NodeSize);
+
+        #ifdef DEBUG
+        cout << "R";
+        #endif
+
+        int Location;
+        if (SearchNode(Key, m_CurrentNode, Location))
+        {
+            m_CurrentNode.Deleted[Location] = true;
+            m_DataFile.seekp(CurrentRoot * m_NodeSize, ios::beg);
+            m_DataFile.write(reinterpret_cast <char *> (&m_CurrentNode), m_NodeSize);
+            return;
+        }
+        else
+        {
+            CurrentRoot = m_CurrentNode.Branch[Location + 1];
+        }
+    }
 }

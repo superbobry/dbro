@@ -1,33 +1,48 @@
 #include "btree_impl.h"
+#include <iostream>
+#include <cstring>
+#include <cassert>
+#include <cstdlib>
 
 int main()
 {
+    std::cout << sizeof(ItemType) << " " << sizeof(NodeType) << std::endl;
 	BTTableClass tree("tree.bin");
-	for (int i = 0; i < 10000; ++i)
+     
+	for (int i = 0; i < 1000000; ++i)
 	{
-		int key = i;
-			
 		ItemType item;
-		int val = rand() % 1000;
-		memset(item.KeyField, 0, sizeof(ItemType::KeyField));
-		memcpy(item.KeyField, reinterpret_cast<char*>(&key), sizeof(int)); 
-		memset(item.DataField, 0, sizeof(ItemType::DataField));
-		memcpy(item.DataField, reinterpret_cast<char*>(&val), sizeof(int)); 
-		
-		std::cout << "Inserting " << key << " " << val << std::endl;
+		item.key = i;
+		item.value = i;
+				
+		std::cout << "inserting " << i << " " << i << std::endl;
 		tree.Insert(item);
-
-		KeyFieldType treekey; 
-		memset(treekey, 0, sizeof(KeyFieldType));
-		memcpy(treekey, reinterpret_cast<char*>(&key), sizeof(int)); 
+    }
+    for (int i = 0; i < 1000000; ++i)
+	{
+		KeyType treekey = i;
 
 		ItemType data;
-		assert(tree.Retrieve(treekey, data));
+		tree.Retrieve(treekey, data);
 	
-		int ret = *(reinterpret_cast<int*>(data.DataField));
-		
-		std::cout << "found " << key << " " << ret << std::endl;
+		std::cout << "found " << i << " " << data.value << std::endl;
+	}
+    for (int i = 0; i < 500000; ++i)
+    {
+        std::cout << "deleting " << 2 * i << std::endl;
+        tree.DeleteItem(2 * i);
+    }
+	//range test
+	//tree.Dump();
+	KeyType lkey = 1000;
+	KeyType rkey = 3000; 
 
+	std::vector<ItemType> found;
+	tree.RetriveRange(lkey, rkey, found);
+	std::cout << "found in range " << lkey << " -> " << rkey << std::endl;
+	for (size_t i = 0; i < found.size(); ++i)
+	{
+		std::cout << found[i].key << " " << found[i].value << std::endl;
 	}
 	return 0;
 }

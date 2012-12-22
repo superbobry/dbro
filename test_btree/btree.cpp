@@ -14,13 +14,9 @@ void btree_close(BTTableClass* tree)
 	delete tree;
 }
 
-void btree_add(BTTableClass* tree, int key, int val) 	
+void btree_add(BTTableClass* tree, int32_t key, int32_t val) 
 {
-	ItemType item; 
-	memset(item.KeyField, 0, sizeof(ItemType::KeyField));
-	memcpy(item.KeyField, reinterpret_cast<char*>(&key), sizeof(int)); 
-	memset(item.DataField, 0, sizeof(ItemType::DataField));
-	memcpy(item.DataField, reinterpret_cast<char*>(&val), sizeof(int)); 
+	ItemType item(key, val);
 	try
 	{
 		tree->Insert(item);
@@ -31,27 +27,30 @@ void btree_add(BTTableClass* tree, int key, int val)
 	}
 }
 
-void btree_erase_all(BTTableClass* tree, int key) 						
+void btree_erase_all(BTTableClass* tree, int32_t key)
 {
-	//tree->erase_all(key);
+	try
+	{
+		tree->DeleteItem(KeyType(key));
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cerr << "Error deleting from btree: " << e.what() << std::endl;
+	}
 }
 
-void btree_erase(BTTableClass* tree, int key_tip, int val)	
+void btree_erase(BTTableClass* tree, int32_t key_tip, int32_t val)
 {
 	//tree->erase(key_tip, val);
 }
 
-int btree_find(BTTableClass* tree, int key)						
+int32_t btree_find(BTTableClass* tree, int32_t key)	
 {
-	KeyFieldType treekey; 
-	memset(treekey, 0, sizeof(KeyFieldType));
-	memcpy(treekey, reinterpret_cast<char*>(&key), sizeof(int)); 
-
 	ItemType data;
 	bool found = false;
 	try
 	{
-		found = tree->Retrieve(treekey, data);
+		found = tree->Retrieve(KeyType(key), data);
 	}
 	catch (std::runtime_error& e)
 	{
@@ -61,8 +60,7 @@ int btree_find(BTTableClass* tree, int key)
 
 	if (found)
 	{
-		int ret = *(reinterpret_cast<int*>(data.DataField));
-		return ret;
+		return data.value;
 	}
 	else
 	{
@@ -70,8 +68,27 @@ int btree_find(BTTableClass* tree, int key)
 	}
 }
 
-int* btree_find_range(BTTableClass* tree, int begin, int end)	
+int32_t* btree_find_range(BTTableClass* tree, int32_t begin, int32_t end)	
 {
-	return new int(0);
-	//return tree->find_range(begin, end);
+	std::vector<ItemType> items;
+	try
+	{
+		tree->RetriveRange(KeyType(begin), KeyType(end), items);
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cerr << "Error finding range in btree: " << e.what() << std::endl;
+	}
+	int32_t* data = new int32_t[items.size() + 1];
+	for (size_t i = 0; i < items.size(); ++i)
+	{
+		data[i] = items[i].value;
+	}
+	data[items.size()] = 0;
+	return data;
+}
+
+void btree_free(int32_t* ptr)
+{
+	delete[] ptr;
 }
