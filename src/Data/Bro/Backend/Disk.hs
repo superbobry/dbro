@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards, RankNTypes #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
@@ -7,8 +7,6 @@ module Data.Bro.Backend.Disk
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
-import Data.Serialize (Serialize, put, get, encodeLazy, decodeLazy)
-import Data.Int (Int64)
 import Data.Map (Map)
 import Data.Maybe (isJust)
 import System.Directory (doesFileExist, removeFile)
@@ -16,15 +14,19 @@ import System.IO (IOMode(..), SeekMode(..))
 import System.FilePath ((</>))
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as S
-import qualified Data.ByteString.Lazy as L
 import qualified System.IO as IO
 
-import Control.Monad.Error (throwError, strMsg)
+import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (liftIO)
+import Data.Serialize (Serialize, put, get, encode, decode)
+import Data.Conduit (GLConduit, ($=), ($$), runResourceT, await, yield)
+import Data.Conduit.Binary (sourceFile)
 import Data.Default (def)
+import qualified Data.Conduit.List as CL
 
-import Data.Bro.Backend.Class (Backend(..), Query(..), withTable, fetchTable, transformRow)
+import Data.Bro.Backend.Class (Backend(..), Query(..),
+                               withTable, fetchTable, transformRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Monad (Bro)
@@ -49,7 +51,7 @@ instance Backend DiskBackend where
             b { diskTables = M.insert name table diskTables }
         diskRoot <- gets diskRoot
         liftIO $! IO.withBinaryFile
-            (diskRoot </> S.unpack name) WriteMode (\_ -> return ())
+            (diskRoot </> S.unpack name) WriteMode IO.hFlush
       where
         table :: Table
         table = def { tabName = name
@@ -69,41 +71,46 @@ instance Backend DiskBackend where
         -- 'get' from 'Data.Binary'.
         diskRoot   <- gets diskRoot
         diskTables <- gets diskTables
-        liftIO $! L.writeFile  (diskRoot </> "_index") (encodeLazy diskTables)
+        liftIO $! S.writeFile  (diskRoot </> "_index") (encode diskTables)
 
     deleteTable name = withTable name $ \Table { tabName } -> do
         diskRoot <- gets diskRoot
         liftIO $! removeFile (diskRoot </> S.unpack tabName)
 
 instance Query DiskBackend where
-    selectAll name =
-        withTable name $ \(Table { .. }) -> do
-            diskRoot <- gets diskRoot
-            bytes <- liftIO $! L.readFile (diskRoot </> S.unpack tabName)
-            let rowSize1 = fromIntegral tabRowSize
-            when (L.length bytes `mod` rowSize1 /= 0) $
-                throwError (strMsg "rows blob is not a multiple of row size")
-            return $! go [] bytes rowSize1 tabSize
+    selectAll name = withTable name $ \(Table { .. }) -> do
+        diskRoot <- gets diskRoot
+        liftIO . runResourceT $!
+            sourceFile (diskRoot </> S.unpack tabName) $=
+            slice tabRowSize $=
+            CL.map decoduit $= CL.catMaybes $$ CL.consume
       where
-        go :: [Row] -> L.ByteString -> Int64 -> Int -> [Row]
-        go rows _bytes _rowSize1 0 = reverse rows
-        go rows bytes rowSize1 i =
-            case decodeLazy . unwrap $ L.take rowSize1 bytes of
-                Right (Row { rowIsDeleted = True }) ->
-                    -- Note(Sergei): skip deleted rows.
-                    go rows (L.drop rowSize1 bytes) rowSize1 (i - 1)
-                Right row ->
-                    row `seq` go (row:rows) (L.drop rowSize1 bytes) rowSize1 (i - 1)
-                Left e -> error e
+        decoduit :: S.ByteString -> Maybe Row
+        decoduit bytes = case decode (unwrap bytes) of
+            Right (Row { rowIsDeleted = True }) -> Nothing
+            Right row -> Just row
+            Left e    -> error e -- FIXME(Sergei): return a proper failure?
 
-        unwrap :: L.ByteString -> L.ByteString
-        unwrap = L.tail . L.dropWhile (/= 0xff)
+        slice :: Monad m => Int -> GLConduit S.ByteString m S.ByteString
+        slice n = go S.empty where
+          go acc
+              | S.length acc >= n =
+                  let (a, b) = S.splitAt n acc in
+                  yield a >> go b
+              | otherwise = do
+                  mbs <- await
+                  case mbs of
+                      Just bs -> go bs
+                      Nothing -> return ()
+
+        unwrap :: S.ByteString -> S.ByteString
+        unwrap = S.tail . S.dropWhile (/= '\xff')
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = wrap tabRowSize . encodeLazy $! row { rowId = Just tabCounter }
-        liftIO $! L.appendFile (diskRoot </> S.unpack name) bytes
+        let bytes = wrap tabRowSize . encode $! row { rowId = Just tabCounter }
+        liftIO $! S.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
@@ -129,29 +136,32 @@ rewriteRows table@(Table { tabName }) rows = do
     liftIO $! IO.withBinaryFile
         (diskRoot </> S.unpack tabName)
         ReadWriteMode
-        (\h -> mapM_ (go h table) rows >> return (length rows))
+        (\h -> do
+              mapM_ (go h table) rows
+              IO.hClose h
+              return (length rows))
   where
     go :: IO.Handle -> Table -> Row -> IO ()
     go h (Table { tabRowSize }) row
         | Row { rowId = Just rowId0 } <- row =
-            let bytes  = wrap tabRowSize (encodeLazy row)
+            let bytes  = wrap tabRowSize (encode row)
                 -- Note(Sergei): rows are indexed from '1'.
                 offset = fromIntegral $ tabRowSize * (rowId0 - 1)
             in do
                 IO.hSeek h AbsoluteSeek offset
-                L.hPut h bytes
+                S.hPut h bytes
         | otherwise = error "can't update row without row id"
 
 -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
 -- where @\xff@ starts data segment. A given chunk is expected to
 -- be shorter than @n - 1@ to fit the @\xff@ tag.
-wrap :: Int -> L.ByteString -> L.ByteString
+wrap :: Int -> S.ByteString -> S.ByteString
 wrap n s =
-    let len = fromIntegral $ L.length s
+    let len = fromIntegral $ S.length s
         pad = fromIntegral $ n - 1 - len
     in case compare len (n - 1) of
-        EQ -> L.cons 0xff s
-        LT -> L.append (L.replicate pad 0) $ L.cons 0xff s
+        EQ -> S.cons '\xff' s
+        LT -> S.append (S.replicate pad '\0') $ S.cons '\xff' s
         GT -> error "row chunk size overflow"
 
 makeDiskBackend :: FilePath -> IO DiskBackend
@@ -159,8 +169,8 @@ makeDiskBackend root = do
     exists <- doesFileExist index
     tables <- if exists
               then do
-                  bytes <- L.readFile index
-                  case decodeLazy bytes of
+                  bytes <- S.readFile index
+                  case decode bytes of
                       Left err -> fail err
                       Right i  -> return i
               else return M.empty
