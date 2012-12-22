@@ -7,12 +7,15 @@ module Data.Bro.Backend.Memory
 
 import Data.List (find)
 import Control.Applicative ((<$>))
+import Control.Monad (void)
 import Data.Map (Map)
 import qualified Data.Map as M
 
 import Control.Monad.Error (throwError)
 import Control.Monad.State (gets)
+import Control.Monad.Trans (lift)
 import Data.Default (def)
+import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
                                withTable, fetchTable, transformRow)
@@ -49,8 +52,11 @@ instance Backend MemoryBackend where
             b { memTables = M.delete name memTables }
 
 instance Query MemoryBackend where
-    selectAll name = withTable name $ \_table ->
-        M.findWithDefault [] name <$> gets memData
+    selectAll name = do
+        rows <- lift $ do
+            void $ fetchTable name
+            M.findWithDefault [] name <$> gets memData
+        CL.sourceList rows
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         tabCounter <- withTable name (return . tabCounter)

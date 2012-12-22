@@ -18,9 +18,9 @@ import qualified System.IO as IO
 
 import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Trans (lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
-import Data.Conduit (GLConduit, ($=), ($$), runResourceT, await, yield)
+import Data.Conduit (GLConduit, ($=), await, yield)
 import Data.Conduit.Binary (sourceFile)
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
@@ -78,12 +78,11 @@ instance Backend DiskBackend where
         liftIO $! removeFile (diskRoot </> S.unpack tabName)
 
 instance Query DiskBackend where
-    selectAll name = withTable name $ \(Table { .. }) -> do
-        diskRoot <- gets diskRoot
-        liftIO . runResourceT $!
-            sourceFile (diskRoot </> S.unpack tabName) $=
-            slice tabRowSize $=
-            CL.map decoduit $= CL.catMaybes $$ CL.consume
+    selectAll name = do
+        Table { tabName, tabRowSize } <- lift $ fetchTable name
+        diskRoot <- lift $ gets diskRoot
+        sourceFile (diskRoot </> S.unpack tabName) $=
+            slice tabRowSize $= CL.map decoduit $= CL.catMaybes
       where
         decoduit :: S.ByteString -> Maybe Row
         decoduit bytes = case decode (unwrap bytes) of
