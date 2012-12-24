@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards, RankNTypes #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
@@ -18,18 +18,17 @@ import qualified System.IO as IO
 
 import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
-import Control.Monad.Trans (lift, liftIO)
+import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
-import Data.Conduit (GLConduit, ($=), await, yield)
+import Data.Conduit (Conduit, ($=), ($$), await, yield)
 import Data.Conduit.Binary (sourceFile)
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
-                               withTable, fetchTable, transformRow)
+                               withTable, fetchTable, updateRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
-import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
@@ -90,7 +89,7 @@ instance Query DiskBackend where
             Right row -> Just row
             Left e    -> error e -- FIXME(Sergei): return a proper failure?
 
-        slice :: Monad m => Int -> GLConduit S.ByteString m S.ByteString
+        slice :: Monad m => Int -> Conduit S.ByteString m S.ByteString
         slice n = go S.empty where
           go acc
               | S.length acc >= n =
@@ -116,37 +115,35 @@ instance Query DiskBackend where
     insertInto _name _row = error "Inserting existing Row"
 
     update name exprs c = do
-        table <- fetchTable name
-        rows  <- map (transformRow table exprs) <$> select name (Projection []) c
-        rewriteRows table rows
+        table@(Table { tabName }) <- fetchTable name
+        diskRoot <- gets diskRoot
+        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
+        count <- select name (Projection []) c $=
+                 CL.map (updateRow table exprs) $$
+                 CL.foldM (\acc row -> rewriteRow h table row >> return (acc + 1)) 0
+        liftIO $ IO.hClose h
+        return count
 
     delete name c = do
-        table <- fetchTable name
-        rows  <- map (\r -> r { rowIsDeleted = True }) <$>
-                 select name (Projection []) c
-        affected <- rewriteRows table rows
-        modifyTable name $ \table@(Table { tabSize }) ->
-            table { tabSize = tabSize - affected }
-        return $! affected
+        table@(Table { tabName, tabSize }) <- fetchTable name
+        diskRoot <- gets diskRoot
+        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
+        count <- select name (Projection []) c $=
+                 CL.map (\r -> r { rowIsDeleted = True }) $$
+                 CL.foldM (\acc row -> rewriteRow h table row >> return (acc + 1)) 0
+        modifyTable name $ \_table ->
+            -- FIXME(Sergei): we assume the state doesn't change during
+            -- 'delete' operation, since no concurency is involved.
+            table { tabSize = tabSize - count }
+        return count
 
-rewriteRows :: Table -> [Row] -> Bro BackendError DiskBackend Int
-rewriteRows table@(Table { tabName }) rows = do
-    diskRoot <- gets diskRoot
-    liftIO $! IO.withBinaryFile
-        (diskRoot </> S.unpack tabName)
-        ReadWriteMode
-        (\h -> do
-              mapM_ (go h table) rows
-              IO.hClose h
-              return (length rows))
-  where
-    go :: IO.Handle -> Table -> Row -> IO ()
-    go h (Table { tabRowSize }) row
+rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
+rewriteRow h (Table { tabRowSize }) row
         | Row { rowId = Just rowId0 } <- row =
             let bytes  = wrap tabRowSize (encode row)
                 -- Note(Sergei): rows are indexed from '1'.
                 offset = fromIntegral $ tabRowSize * (rowId0 - 1)
-            in do
+            in liftIO $ do
                 IO.hSeek h AbsoluteSeek offset
                 S.hPut h bytes
         | otherwise = error "can't update row without row id"

@@ -63,7 +63,12 @@ instance Serialize ColumnType where
 data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
                  | DoubleValue  {-# UNPACK #-} !Double
                  | VarcharValue S.ByteString
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show ColumnValue where
+    show (IntegerValue i) = show i
+    show (DoubleValue d) = show d
+    show (VarcharValue s) = show s
 
 instance Serialize ColumnValue where
     put (IntegerValue v) = put 'i' >> put v

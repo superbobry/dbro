@@ -5,20 +5,22 @@ module Data.Bro.Backend.Memory
   , makeMemoryBackend
   ) where
 
-import Data.List (find)
 import Control.Applicative ((<$>))
 import Control.Monad (void)
+import Data.List (find)
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
 import Control.Monad.Error (throwError)
 import Control.Monad.State (gets)
 import Control.Monad.Trans (lift)
+import Data.Conduit (($$))
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
-                               withTable, fetchTable, transformRow)
+                               withTable, fetchTable, updateRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
@@ -70,19 +72,18 @@ instance Query MemoryBackend where
     insertInto _name _row = error "Inserting existing Row"
 
     update name exprs c = do
-        rows <- select name (Projection []) c
+        rows <- select name (Projection []) c $$ CL.consume
         table <- fetchTable name
         modifyBackend $ \b@(MemoryBackend { .. }) ->
-            let rows' = map (transformRow table exprs) rows
+            let rows' = map (updateRow table exprs) rows
                 oldrows = M.findWithDefault [] name memData
             in b { memData = M.insert name (change oldrows rows') memData }
         return $ length rows
       where
+        -- FIXME(Sergei): ugly! please avoid double 'where', if possible.
         change (h:oldList) newList = nh:(change oldList) newList
           where
-            nh = case find (\node -> (rowId node) == rowId h) newList of
-                Nothing -> h
-                Just node -> node
+            nh = fromMaybe h $ find (\node -> (rowId node) == rowId h) newList
         change [] _ = []
 
 makeMemoryBackend :: MemoryBackend

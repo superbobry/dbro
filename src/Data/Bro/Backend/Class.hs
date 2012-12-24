@@ -5,12 +5,13 @@ module Data.Bro.Backend.Class
   , Query(..)
   , fetchTable
   , withTable
-  , transformRow
+  , updateRow
   ) where
 
 import Control.Monad.State (modify)
 import Control.Monad.Error (throwError)
-import Data.Conduit (Source, Conduit, ($=), ($$))
+import Control.Monad.Trans (lift)
+import Data.Conduit (Source, Conduit, ($=))
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Error (BackendError(..))
@@ -37,15 +38,16 @@ class Backend b where
 class Backend b => Query b where
     selectAll :: TableName -> Source (Bro BackendError b) Row
 
-    select :: TableName -> Projection -> Maybe Condition -> Bro BackendError b [Row]
-    select name p c = withTable name $ \table ->
-        selectAll name $= projectRows table p $= filterRows table c $$ CL.consume
+    select :: TableName -> Projection -> Maybe Condition -> Source (Bro BackendError b) Row
+    select name p c = do
+        table <- lift $ fetchTable name
+        selectAll name $= projectRows table p $= filterRows table c
 
     insertInto :: TableName -> Row -> Bro BackendError b RowId
 
     update :: TableName -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
 
-    delete :: TableName -> (Maybe Condition) -> Bro BackendError b Int
+    delete :: TableName -> Maybe Condition -> Bro BackendError b Int
 
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do
@@ -60,9 +62,9 @@ withTable :: Backend b
 withTable name f = f =<< fetchTable name
 {-# INLINE withTable #-}
 
-transformRow :: Table -> [(ColumnName, Expr)] -> Row -> Row
-transformRow (Table { tabSchema }) es r@(Row { rowData }) =
-    r { rowData = map transform pairs }
+updateRow :: Table -> [(ColumnName, Expr)] -> Row -> Row
+updateRow (Table { tabSchema }) es r@(Row { rowData }) =
+    r { rowData = map f pairs }
   where
     pairs :: [(ColumnName, ColumnValue)]
     pairs = zip names rowData
@@ -70,8 +72,8 @@ transformRow (Table { tabSchema }) es r@(Row { rowData }) =
     names :: [ColumnName]
     names = map fst tabSchema
 
-    transform :: (ColumnName, ColumnValue) -> ColumnValue
-    transform (name, v) = case lookup name es of
+    f :: (ColumnName, ColumnValue) -> ColumnValue
+    f (name, v) = case lookup name es of
         Just e  -> evalExpr pairs e
         Nothing -> v
 
