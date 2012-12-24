@@ -5,7 +5,6 @@ module Data.Bro.Backend.Util
   ) where
 
 import Data.Int (Int64)
-
 import Foreign.Storable (sizeOf)
 
 import Data.Bro.Types (ColumnType(..), TableSchema)
@@ -26,6 +25,6 @@ rowSize tabSchema = (+ overhead) $! sum $! do
     overhead =
         1    +  -- data segment tag
         1    +  -- row id maybe tag
-        1    +  -- isDeleted flag
+        1    +  -- deleted flag
         word +  -- row id
-        word    -- list lengthf52ce92
+        word    -- list length

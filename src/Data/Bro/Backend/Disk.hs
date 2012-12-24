@@ -95,11 +95,7 @@ instance Query DiskBackend where
               | S.length acc >= n =
                   let (a, b) = S.splitAt n acc in
                   yield a >> go b
-              | otherwise = do
-                  mbs <- await
-                  case mbs of
-                      Just bs -> go bs
-                      Nothing -> return ()
+              | otherwise = maybe (return ()) go =<< await
 
         unwrap :: S.ByteString -> S.ByteString
         unwrap = S.tail . S.dropWhile (/= '\xff')
