@@ -130,7 +130,7 @@ data Condition = Equals ColumnName Expr
 newtype Projection = Projection [Expr] deriving (Eq, Show)
 
 data Statement = CreateTable TableName TableSchema
-               | InsertInto TableName ![(ColumnName, ColumnValue)]
+               | InsertInto TableName ![ColumnName] ![ColumnValue]
                | Select TableName Projection (Maybe Condition)
                | Update TableName ![(ColumnName, Expr)] (Maybe Condition)
                | Delete TableName (Maybe Condition)

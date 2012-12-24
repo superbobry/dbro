@@ -27,8 +27,10 @@ exec s = case s of
     Select name p c -> do
         rows <- lazyConsume $ Backend.select name p c
         return $ Selected rows
-    InsertInto name pairs -> withTable name $ \Table { tabSchema } -> do
-        remapped <- remap tabSchema pairs
+    InsertInto name columns values -> withTable name $ \Table { tabSchema } -> do
+        remapped <- case columns of
+            []    -> return values
+            (_:_) -> remap tabSchema $ zip columns values
         Inserted <$> Backend.insertInto name (def { rowData = remapped })
     Update name exprs cond -> withTable name $ \_table ->
         Updated <$> Backend.update name exprs cond

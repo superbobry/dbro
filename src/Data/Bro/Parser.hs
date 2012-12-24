@@ -4,19 +4,22 @@ module Data.Bro.Parser
   ( statement
 
 #ifdef DEBUG
-  , expr
   , projection
+  , expr
   , condition
 #endif
   ) where
 
 import Control.Applicative ((<$>), (<*>), (<*), (*>), (<|>), pure)
-import Control.Monad (void)
-import Data.Char (isAlphaNum, isSpace)
+import Control.Monad (void, when)
+import Data.Char (isAlphaNum, isSpace, toLower)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as S
 
 import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
-                                         takeWhile1, sepBy1, number, decimal,
+                                         takeWhile1, sepBy, sepBy1,
+                                         number, decimal,
                                          char, stringCI, skipSpace, option)
 
 import Data.Bro.Simple (simplify)
@@ -36,10 +39,10 @@ statement = choice [selectFrom, createTable, insertInto, update, delete]
     insertInto = do
         tokens ["insert", "into"]
         table <- tableName
-        columns <- listOf1 columnName
+        columns <- listOf1 columnName <|> pure []
         token "values"
         values <- listOf1 columnValue
-        return $ InsertInto table (zip columns values)
+        return $ InsertInto table columns values
 
     selectFrom = do
         token "select"
@@ -85,10 +88,11 @@ expr = as "expr" $! simplify <$> compound
                       ]
 
 projection :: Parser Projection
-projection =
-    as "projection" $!
-    token "*" *> pure (Projection []) <|>
-    Projection <$> expr `sepBy1` (char ',' <* skipSpace)
+projection = as "projection" $! do
+    exprs <- choice [ token "*" *> pure []
+                    , expr `sepBy` (char ',' <* skipSpace)
+                    ]
+    return $ Projection exprs
 
 condition :: Parser Condition
 condition = as "condition" $! simplify <$> do
@@ -151,7 +155,17 @@ spaced p = skipSpace *> p <* skipSpace
 {-# INLINE spaced #-}
 
 word :: Parser S.ByteString
-word = takeWhile1 isAlphaNum
+word = do
+    name <- takeWhile1 isAlphaNum
+    when (Set.member (S.map toLower name) reserved) $
+        fail (S.unpack name ++ "is reserved!")
+    return name
+  where
+    reserved :: Set S.ByteString
+    reserved = Set.fromList
+               ["select", "from", "update", "set", "insert", "into",
+                "where"]
+
 {-# INLINE word #-}
 
 token :: S.ByteString -> Parser ()
