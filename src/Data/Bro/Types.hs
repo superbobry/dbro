@@ -14,6 +14,7 @@ module Data.Bro.Types
   , Projection(..)
   , Condition(..)
   , Expr(..)
+  , Direction(..)
   , Statement(..)
   , Range
   , RangeValue(..)
@@ -140,14 +141,18 @@ data Condition = Equals ColumnName Expr
 
 newtype Projection = Projection [Expr] deriving (Eq, Show)
 
+data Direction = Asc | Desc deriving (Eq, Show)
+
 data Statement = CreateTable TableName TableSchema
                | InsertInto TableName ![ColumnName] ![ColumnValue]
                | Select TableName Projection (Maybe Condition)
                | Update TableName ![(ColumnName, Expr)] (Maybe Condition)
                | Delete TableName (Maybe Condition)
+               | CreateIndex TableName ![(ColumnName, Direction)]
     deriving (Eq, Show)
 
 data RangeValue = NumericRange Int32 | MinusInf | PlusInf
+
 type Range = [(RangeValue, RangeValue)]
 
 isIntegral :: ColumnType -> Bool

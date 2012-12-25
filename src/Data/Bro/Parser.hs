@@ -25,10 +25,12 @@ import Data.Attoparsec.ByteString.Char8 (Parser, Number(..), (<?>), choice,
 import Data.Bro.Simple (simplify)
 import Data.Bro.Types (TableName, TableSchema,
                        ColumnName, ColumnType(..), ColumnValue(..),
-                       Projection(..), Condition(..), Expr(..), Statement(..))
+                       Projection(..), Condition(..), Expr(..),
+                       Direction(..), Statement(..))
 
 statement :: Parser Statement
-statement = choice [selectFrom, createTable, insertInto, update, delete]
+statement = choice [createTable, selectFrom, insertInto, update, delete,
+                    createIndex]
             <* skipSpace
             <* char ';'
   where
@@ -70,6 +72,14 @@ statement = choice [selectFrom, createTable, insertInto, update, delete]
         c <- option Nothing $ token "where" *> (Just <$> condition)
         return $ Delete table c
 
+    createIndex = do
+        tokens ["create", "unique", "index", "on"]
+        table <- tableName
+        columns <- listOf1 $ (,) <$> columnName <*> direction
+        -- FIXME(Sergei): for now we only allow BTree indices.
+        tokens ["using", "btree"]
+        return $ CreateIndex table columns
+
 expr :: Parser Expr
 expr = as "expr" $! simplify <$> compound
   where
@@ -109,6 +119,12 @@ condition = as "condition" $! simplify <$> do
   where
     orEquals :: (ColumnName -> Expr -> Condition) -> ColumnName -> Expr -> Condition
     orEquals con field expr0 = con field expr0 `Or` Equals field expr0
+
+direction :: Parser Direction
+direction = choice [ token "asc"  *> pure Asc
+                   , token "desc" *> pure Desc
+                   , pure Asc  -- Default sort direction.
+                   ]
 
 tableName :: Parser TableName
 tableName = word
