@@ -73,10 +73,11 @@ statement = choice [createTable, selectFrom, insertInto, update, delete,
         return $ Delete table c
 
     createIndex = do
+        -- FIXME(Sergei): current limitations: only unique BTree based
+        -- indices, sort direction is ingored by the implementation!
         tokens ["create", "unique", "index", "on"]
         table <- tableName
         columns <- listOf1 $ (,) <$> columnName <*> direction
-        -- FIXME(Sergei): for now we only allow BTree indices.
         tokens ["using", "btree"]
         return $ CreateIndex table columns
 
