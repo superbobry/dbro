@@ -1,9 +1,11 @@
 module Data.Bro.Condition
-  ( evalCondition
+  ( evalCondition,
+    evalRange
   ) where
 
 import Data.Bro.Expr (evalExpr)
-import Data.Bro.Types (Expr, Condition(..), ColumnName, ColumnValue)
+import Data.Bro.Types   (Expr, Condition(..), ColumnName, ColumnValue, 
+                        TableIndex, IndexName, Range, RangeValue(..),)
 
 evalCondition :: [(ColumnName, ColumnValue)] -> Condition -> Bool
 evalCondition ctx c = case c of
@@ -18,3 +20,6 @@ evalCondition ctx c = case c of
     f name e op = case lookup name ctx of
         Just v -> v `op` evalExpr ctx e
         Nothing -> False  -- Note(Sergei): no error here!
+
+evalRange :: TableIndex -> Maybe Condition -> [(IndexName, Range)]
+evalRange index _cond = []--[ (fst . head index, [(MinusInf, PlusInf)]) ]

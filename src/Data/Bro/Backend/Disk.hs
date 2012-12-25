@@ -34,7 +34,11 @@ import Data.Bro.Backend.Class (Backend(..), Query(..),
                                withTable, fetchTable, updateRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
-import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
+import Data.Bro.Backend.Util (rangeToVal)
+import Data.Bro.Monad (Bro)
+import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), Projection(..), Range)
+import Data.Bro.Condition (evalRange)
+import Data.Bro.BTree (BTree, btreeOpen, btreeClose, btreeFindRange)
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)
@@ -81,7 +85,10 @@ instance Backend DiskBackend where
         liftIO $! removeFile (diskRoot </> S.unpack tabName)
 
 instance Query DiskBackend where
-    selectAll name = do
+    selectAll name cond = do
+        let indexes = evalRange undefined cond
+        rIds <- lift $ liftIO $ getRecFromIndex indexes
+        --read rIds from file only
         Table { tabName, tabRowSize } <- lift $ fetchTable name
         diskRoot <- lift $ gets diskRoot
         sourceFile (diskRoot </> S.unpack tabName) $=
@@ -144,6 +151,22 @@ rewriteRow h (Table { tabRowSize }) row
                 IO.hSeek h AbsoluteSeek offset
                 S.hPut h bytes
         | otherwise = error "can't update row without row id"
+
+getRecFromIndex :: [(IndexName, Range)] -> IO [Int]
+getRecFromIndex ((n, r):indexes) = do
+    tree <- btreeOpen $ S.unpack n
+    lst <- getSeq tree r
+    btreeClose tree
+    lst' <- getRecFromIndex indexes
+    return $ lst ++ lst'
+    where
+      getSeq :: BTree -> Range -> IO [Int]
+      getSeq tree ((rl, rr):ranges) = do
+          res <- btreeFindRange tree (rangeToVal rl) (rangeToVal rr) 
+          res' <- getSeq tree ranges
+          return $ res ++ res'
+      getSeq _tree [] = return []
+getRecFromIndex [] = return []
 
 -- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
 -- where @\xff@ starts data segment. A given chunk is expected to

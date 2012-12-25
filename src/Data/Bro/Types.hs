@@ -3,6 +3,8 @@
 module Data.Bro.Types
   ( TableName
   , TableSchema
+  , TableIndex
+  , IndexName
   , Table(..)
   , RowId
   , Row(..)
@@ -13,6 +15,8 @@ module Data.Bro.Types
   , Condition(..)
   , Expr(..)
   , Statement(..)
+  , Range
+  , RangeValue(..)
   ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -82,13 +86,16 @@ instance Serialize ColumnValue where
         _   -> fail $ "Not a valid column value: " ++ [tag]
 
 type TableName = S.ByteString
+type IndexName = S.ByteString
 type TableSchema = [(ColumnName, ColumnType)]
+type TableIndex = [(ColumnName, IndexName)]
 
 data Table = Table { tabName    :: TableName
                    , tabCounter :: {-# UNPACK #-} !RowId
                    , tabSchema  :: !TableSchema
                    , tabRowSize :: {-# UNPACK #-} !Int
                    , tabSize    :: {-# UNPACK #-} !Int
+                   , tabIndex   :: !TableIndex
                    } deriving (Eq, Show)
 
 instance Serialize Table where
@@ -98,8 +105,9 @@ instance Serialize Table where
         put tabSchema
         put tabRowSize
         put tabSize
+        put tabIndex
 
-    get = Table <$> get <*> get <*> get <*> get <*> get
+    get = Table <$> get <*> get <*> get <*> get <*> get <*> get
 
 instance Default Table where
     def = Table { tabName = S.empty
@@ -107,6 +115,7 @@ instance Default Table where
                 , tabSchema = []
                 , tabRowSize = 0
                 , tabSize = 0
+                , tabIndex = []
                 }
 
 -- FIXME(Sergei): add comparisons here!
@@ -135,3 +144,6 @@ data Statement = CreateTable TableName TableSchema
                | Update TableName ![(ColumnName, Expr)] (Maybe Condition)
                | Delete TableName (Maybe Condition)
     deriving (Eq, Show)
+
+data RangeValue = NumericRange Int | MinusInf | PlusInf
+type Range = [(RangeValue, RangeValue)]

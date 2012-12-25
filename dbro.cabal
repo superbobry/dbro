@@ -35,6 +35,12 @@ library
   if flag(debug)
     cpp-options: -DDEBUG
 
+  c-sources:
+    src/Foreign/BTree/btree.cpp
+    src/Foreign/BTree/btree_impl.cpp
+
+  extra-libraries: stdc++
+
   exposed-modules:
     Data.Bro.Backend
     Data.Bro.Backend.Class
@@ -49,6 +55,7 @@ library
     Data.Bro.Simple
     Data.Bro.Types
     Data.Bro.Parser
+    Data.Bro.BTree
 
   build-depends:    base
                   , safe == 0.3.*

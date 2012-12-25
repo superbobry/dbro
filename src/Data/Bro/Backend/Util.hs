@@ -1,13 +1,14 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Data.Bro.Backend.Util
-  ( rowSize
+  ( rowSize,
+    rangeToVal
   ) where
 
 import Data.Int (Int64)
 import Foreign.Storable (sizeOf)
 
-import Data.Bro.Types (ColumnType(..), TableSchema)
+import Data.Bro.Types (ColumnType(..), TableSchema, RangeValue(..))
 
 rowSize :: TableSchema -> Int
 rowSize tabSchema = (+ overhead) $! sum $! do
@@ -28,3 +29,14 @@ rowSize tabSchema = (+ overhead) $! sum $! do
         1    +  -- deleted flag
         word +  -- row id
         word    -- list length
+
+rangeToVal :: RangeValue -> Int
+rangeToVal (NumericRange n) = n
+rangeToVal MinusInf = minBound::Int
+rangeToVal PlusInf = maxBound::Int
+
+--minInt :: Int
+--minInt = minBound::Int
+
+--maxInt :: Int
+--maxInt = maxBound::Int

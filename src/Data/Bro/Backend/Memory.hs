@@ -54,7 +54,7 @@ instance Backend MemoryBackend where
             b { memTables = M.delete name memTables }
 
 instance Query MemoryBackend where
-    selectAll name = do
+    selectAll name _range = do
         rows <- lift $ do
             void $ fetchTable name
             M.findWithDefault [] name <$> gets memData
