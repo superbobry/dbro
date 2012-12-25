@@ -20,7 +20,7 @@ import Data.Bro.Expr (evalExpr)
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, TableSchema, Table(..), Row(..), RowId,
                        ColumnName, ColumnValue, Expr, Projection(..),
-                       Condition)
+                       Condition, IndexName)
 
 class Backend b where
     insertTable :: TableName -> TableSchema -> Bro BackendError b ()
@@ -48,6 +48,8 @@ class Backend b => Query b where
     update :: TableName -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
 
     delete :: TableName -> Maybe Condition -> Bro BackendError b Int
+
+    createIndex :: TableName -> IndexName -> [ColumnName] -> Bro BackendError b ()
 
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do

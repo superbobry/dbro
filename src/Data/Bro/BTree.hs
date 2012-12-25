@@ -2,6 +2,8 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Data.Bro.BTree   (BTree,
+                        BKey,
+                        BVal,
                         btreeOpen,
                         btreeClose,
                         btreeAdd,
@@ -14,11 +16,12 @@ module Data.Bro.BTree   (BTree,
 import Foreign.C.String (CString, withCString)
 import Foreign.Ptr (Ptr, plusPtr)
 import Foreign.Storable (peek)
+import Data.Int (Int32)
 
 type BTreeInst = ()
 type BTree = Ptr BTreeInst
-type BKey = Int
-type BVal = Int
+type BKey = Int32
+type BVal = Int32
 
 bNull :: BVal
 bNull = 0

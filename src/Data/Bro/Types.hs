@@ -17,6 +17,8 @@ module Data.Bro.Types
   , Statement(..)
   , Range
   , RangeValue(..)
+  , isIntegral
+  , toIntegral
   ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -28,7 +30,7 @@ import qualified Data.ByteString.Char8 as S
 
 import Data.Default (Default(..))
 
-type RowId = Int
+type RowId = Int32
 
 data Row = Row { rowId        :: Maybe RowId
                , rowData      :: ![ColumnValue]
@@ -93,8 +95,8 @@ type TableIndex = [(ColumnName, IndexName)]
 data Table = Table { tabName    :: TableName
                    , tabCounter :: {-# UNPACK #-} !RowId
                    , tabSchema  :: !TableSchema
-                   , tabRowSize :: {-# UNPACK #-} !Int
-                   , tabSize    :: {-# UNPACK #-} !Int
+                   , tabRowSize :: {-# UNPACK #-} !Int32
+                   , tabSize    :: {-# UNPACK #-} !Int32
                    , tabIndex   :: !TableIndex
                    } deriving (Eq, Show)
 
@@ -145,5 +147,13 @@ data Statement = CreateTable TableName TableSchema
                | Delete TableName (Maybe Condition)
     deriving (Eq, Show)
 
-data RangeValue = NumericRange Int | MinusInf | PlusInf
+data RangeValue = NumericRange Int32 | MinusInf | PlusInf
 type Range = [(RangeValue, RangeValue)]
+
+isIntegral :: ColumnType -> Bool
+isIntegral IntegerColumn = True
+isIntegral _ = False
+
+toIntegral :: ColumnValue -> Int32
+toIntegral (IntegerValue i) = i
+toIntegral _ = error "Not an integer value"

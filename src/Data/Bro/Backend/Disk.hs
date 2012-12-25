@@ -27,7 +27,10 @@ import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
 import Data.Conduit (Conduit, ($=), ($$), await, yield)
 import Data.Conduit.Binary (sourceFile)
+import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
+import Data.Maybe (fromJust, isNothing)
+import Data.List (findIndex)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
@@ -36,9 +39,10 @@ import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Backend.Util (rangeToVal)
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), Projection(..), Range)
+import Data.Bro.Types   (TableName, IndexName, Table(..), Row(..), Projection(..),
+                        Range, isIntegral, toIntegral)
 import Data.Bro.Condition (evalRange)
-import Data.Bro.BTree (BTree, btreeOpen, btreeClose, btreeFindRange)
+import Data.Bro.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)
@@ -88,11 +92,11 @@ instance Query DiskBackend where
     selectAll name cond = do
         let indexes = evalRange undefined cond
         rIds <- lift $ liftIO $ getRecFromIndex indexes
-        --read rIds from file only
+        -- TODO: read rIds from file only
         Table { tabName, tabRowSize } <- lift $ fetchTable name
         diskRoot <- lift $ gets diskRoot
         sourceFile (diskRoot </> S.unpack tabName) $=
-            slice tabRowSize $= CL.map decoduit $= CL.catMaybes
+            slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
       where
         decoduit :: S.ByteString -> Maybe Row
         decoduit bytes = case decode (unwrap bytes) of
@@ -111,7 +115,7 @@ instance Query DiskBackend where
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = wrap tabRowSize . encode $! row { rowId = Just tabCounter }
+        let bytes = wrap (fromIntegral tabRowSize) . encode $! row { rowId = Just tabCounter }
         liftIO $! S.appendFile (diskRoot </> S.unpack name) bytes
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
@@ -139,12 +143,47 @@ instance Query DiskBackend where
             -- FIXME(Sergei): we assume the state doesn't change during
             -- 'delete' operation, since no concurency is involved.
             table { tabSize = tabSize - count }
-        return count
+        return $ fromIntegral count
+
+    createIndex tName indName colNames = do
+        table <- fetchTable tName
+        go table colNames
+      where
+        --go :: MonadIO m => TableSchema -> TableIndex -> [ColumnName] -> m ()
+        go table (col:cols) = do
+            let colType = lookup tName $ tabSchema table
+            when (isNothing colType) $ error "Column name not found"
+            when (not $ isIntegral $ fromJust colType) $
+                error "Only index by integral type is supported"
+            when (isJust $ lookup col $ tabIndex table) $
+                error "Index already exists"
+            let fileName = S.intercalate (S.pack "_") [tName, indName, col]
+            let colId = findIndex (\(n,_) -> n == col) (tabSchema table)
+            insertIntoBtree (S.unpack fileName) tName $ fromJust colId
+            modifyTable tName $ \_table ->
+                table { tabIndex = (col, fileName):(tabIndex table) }
+            go table cols   --is instance of table updated here?
+        go _tbl [] = return ()
+
+insertIntoBtree :: (Backend b, Query b) => FilePath -> TableName ->
+                                            Int -> Bro BackendError b ()
+insertIntoBtree file tName colId = do
+    tree <- liftIO $ btreeOpen file
+    rows <- lazyConsume $ selectAll tName Nothing
+    liftIO $ go tree rows
+    liftIO $ btreeClose tree
+    return ()
+      where
+        go tree (row:rows) = do
+            let val = toIntegral $ (rowData row) !! colId
+            btreeAdd tree val $ fromJust (rowId row)
+            go tree rows
+        go _tree [] = return ()
 
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
         | Row { rowId = Just rowId } <- row =
-            let bytes  = wrap tabRowSize (encode row)
+            let bytes  = wrap (fromIntegral tabRowSize) (encode row)
                 -- Note(Sergei): rows are indexed from '1'.
                 offset = fromIntegral $ tabRowSize * (rowId - 1)
             in liftIO $ do
@@ -152,7 +191,8 @@ rewriteRow h (Table { tabRowSize }) row
                 S.hPut h bytes
         | otherwise = error "can't update row without row id"
 
-getRecFromIndex :: [(IndexName, Range)] -> IO [Int]
+-- TODO: return as source
+getRecFromIndex :: [(IndexName, Range)] -> IO [BVal]
 getRecFromIndex ((n, r):indexes) = do
     tree <- btreeOpen $ S.unpack n
     lst <- getSeq tree r
@@ -160,9 +200,9 @@ getRecFromIndex ((n, r):indexes) = do
     lst' <- getRecFromIndex indexes
     return $ lst ++ lst'
     where
-      getSeq :: BTree -> Range -> IO [Int]
+      getSeq :: BTree -> Range -> IO [BVal]
       getSeq tree ((rl, rr):ranges) = do
-          res <- btreeFindRange tree (rangeToVal rl) (rangeToVal rr) 
+          res <- btreeFindRange tree (rangeToVal rl) (rangeToVal rr)
           res' <- getSeq tree ranges
           return $ res ++ res'
       getSeq _tree [] = return []

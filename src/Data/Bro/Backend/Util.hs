@@ -5,12 +5,12 @@ module Data.Bro.Backend.Util
     rangeToVal
   ) where
 
-import Data.Int (Int64)
+import Data.Int (Int64, Int32)
 import Foreign.Storable (sizeOf)
 
 import Data.Bro.Types (ColumnType(..), TableSchema, RangeValue(..))
 
-rowSize :: TableSchema -> Int
+rowSize :: TableSchema -> Int32
 rowSize tabSchema = (+ overhead) $! sum $! do
     -- FIXME(Sergei): WHY 'Data.Binary' uses 8-byte integers on
     -- on 32-bit platforms?
@@ -20,8 +20,8 @@ rowSize tabSchema = (+ overhead) $! sum $! do
         IntegerColumn   -> 4
         VarcharColumn l -> fromIntegral l + word
   where
-    word :: Int
-    word = sizeOf (undefined :: Int64)
+    word :: Int32
+    word = fromIntegral $ sizeOf (undefined :: Int64)
 
     overhead =
         1    +  -- data segment tag
@@ -30,10 +30,10 @@ rowSize tabSchema = (+ overhead) $! sum $! do
         word +  -- row id
         word    -- list length
 
-rangeToVal :: RangeValue -> Int
+rangeToVal :: RangeValue -> Int32
 rangeToVal (NumericRange n) = n
-rangeToVal MinusInf = minBound::Int
-rangeToVal PlusInf = maxBound::Int
+rangeToVal MinusInf = minBound::Int32
+rangeToVal PlusInf = maxBound::Int32
 
 --minInt :: Int
 --minInt = minBound::Int

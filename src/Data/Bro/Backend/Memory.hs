@@ -80,11 +80,14 @@ instance Query MemoryBackend where
             in b { memData = M.insert name (change oldrows rows') memData }
         return $ length rows
       where
-        -- FIXME(Sergei): ugly! please avoid double 'where', if possible.
-        change (h:oldList) newList = nh:(change oldList) newList
-          where
-            nh = fromMaybe h $ find (\node -> (rowId node) == rowId h) newList
+        change (h:oldList) newList = 
+            let nh = fromMaybe h $ find (\node -> (rowId node) == rowId h) newList
+            in nh:(change oldList) newList
         change [] _ = []
+
+    delete _name _cond = undefined
+
+    createIndex _name _iname _cols = undefined
 
 makeMemoryBackend :: MemoryBackend
 makeMemoryBackend = MemoryBackend { memTables = M.empty, memData = M.empty }
