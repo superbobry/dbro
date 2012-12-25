@@ -97,7 +97,6 @@ instance Query DiskBackend where
         --liftIO $ print $ indexes
         rIds <- lift $ liftIO $ getRecFromIndex indexes
         --liftIO $ print rIds
-        -- TODO: read rIds from file only
         diskRoot <- lift $ gets diskRoot
         if null rIds
             then sourceFile (diskRoot </> S.unpack tabName) $=
