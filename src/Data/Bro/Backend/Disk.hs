@@ -25,12 +25,13 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
-import Data.Conduit (Conduit, ($=), ($$), await, yield)
+import Data.Conduit (Conduit, ($=), ($$), await, yield, addCleanup)
 import Data.Conduit.Binary (sourceFile)
 import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
 import Data.Maybe (fromJust, isNothing)
 import Data.List (findIndex)
+import Data.Int (Int32)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
@@ -40,7 +41,7 @@ import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Backend.Util (rangeToVal)
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types   (TableName, IndexName, Table(..), Row(..), Projection(..),
-                        Range, isIntegral, toIntegral)
+                        Range, isIntegral, toIntegral, RowId)
 import Data.Bro.Condition (evalRange)
 import Data.Bro.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
 
@@ -90,13 +91,21 @@ instance Backend DiskBackend where
 
 instance Query DiskBackend where
     selectAll name cond = do
-        let indexes = evalRange undefined cond
+        Table { tabName, tabRowSize, tabIndex } <- lift $ fetchTable name
+        --liftIO $ print tabIndex
+        let indexes = evalRange tabIndex cond
+        --liftIO $ print $ indexes
         rIds <- lift $ liftIO $ getRecFromIndex indexes
+        --liftIO $ print rIds
         -- TODO: read rIds from file only
-        Table { tabName, tabRowSize } <- lift $ fetchTable name
         diskRoot <- lift $ gets diskRoot
-        sourceFile (diskRoot </> S.unpack tabName) $=
-            slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
+        if null rIds
+            then sourceFile (diskRoot </> S.unpack tabName) $=
+                slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
+            else do
+                h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
+                addCleanup (\_done -> liftIO $ IO.hClose h) $ CL.sourceList rIds $=
+                    CL.mapM (readChunk h tabRowSize)
       where
         decoduit :: S.ByteString -> Maybe Row
         decoduit bytes = case decode (unwrap bytes) of
@@ -111,6 +120,16 @@ instance Query DiskBackend where
                   let (a, b) = S.splitAt n acc in
                   yield a >> go b
               | otherwise = maybe (return ()) go =<< await
+
+        readChunk :: Backend b => IO.Handle -> Int32 -> RowId -> Bro BackendError b Row
+        readChunk h tSize rId = do
+            let offset = tSize * (rId - 1)
+            liftIO $ IO.hSeek h AbsoluteSeek (fromIntegral offset)
+            bytes <- liftIO $ S.hGet h (fromIntegral tSize)
+            case decode (unwrap bytes) of
+                Right row   -> return row
+                Left e      -> error e
+
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
@@ -149,9 +168,8 @@ instance Query DiskBackend where
         table <- fetchTable tName
         go table colNames
       where
-        --go :: MonadIO m => TableSchema -> TableIndex -> [ColumnName] -> m ()
         go table (col:cols) = do
-            let colType = lookup tName $ tabSchema table
+            let colType = lookup col $ tabSchema table
             when (isNothing colType) $ error "Column name not found"
             when (not $ isIntegral $ fromJust colType) $
                 error "Only index by integral type is supported"
@@ -192,7 +210,7 @@ rewriteRow h (Table { tabRowSize }) row
         | otherwise = error "can't update row without row id"
 
 -- TODO: return as source
-getRecFromIndex :: [(IndexName, Range)] -> IO [BVal]
+getRecFromIndex :: [(IndexName, Range)] -> IO [RowId]
 getRecFromIndex ((n, r):indexes) = do
     tree <- btreeOpen $ S.unpack n
     lst <- getSeq tree r
@@ -202,7 +220,10 @@ getRecFromIndex ((n, r):indexes) = do
     where
       getSeq :: BTree -> Range -> IO [BVal]
       getSeq tree ((rl, rr):ranges) = do
+          --print $ rangeToVal rl
+          --print $ rangeToVal rr
           res <- btreeFindRange tree (rangeToVal rl) (rangeToVal rr)
+          --print res
           res' <- getSeq tree ranges
           return $ res ++ res'
       getSeq _tree [] = return []

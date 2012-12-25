@@ -151,7 +151,7 @@ data Statement = CreateTable TableName TableSchema
                | CreateIndex IndexName TableName ![(ColumnName, Direction)]
     deriving (Eq, Show)
 
-data RangeValue = NumericRange Int32 | MinusInf | PlusInf
+data RangeValue = NumericRange Int32 | MinusInf | PlusInf deriving (Eq, Show)
 
 type Range = [(RangeValue, RangeValue)]
 

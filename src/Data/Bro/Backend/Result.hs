@@ -9,3 +9,4 @@ data BackendResult = Created
                    | Selected [Row]
                    | Updated Int
                    | Deleted Int
+				   | CreatedIndex

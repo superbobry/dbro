@@ -43,6 +43,7 @@ main = runBro_ (forever loop) =<< makeDiskBackend "." where
   formatResult :: (Backend b, Query b) => BackendResult -> Bro BackendError b ()
   formatResult r = case r of
       Created   -> liftIO $ putStrLn "OK"
+      CreatedIndex -> liftIO $ putStrLn "OK"
       Updated n -> liftIO . putStrLn $ printf "OK %i" n
       Deleted n -> liftIO . putStrLn $ printf "OK %i" n
       Inserted rowId -> liftIO . putStrLn $ printf "OK %i" rowId

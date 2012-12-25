@@ -22,4 +22,5 @@ evalCondition ctx c = case c of
         Nothing -> False  -- Note(Sergei): no error here!
 
 evalRange :: TableIndex -> Maybe Condition -> [(IndexName, Range)]
-evalRange index _cond = []--[ (fst . head index, [(MinusInf, PlusInf)]) ]
+evalRange [] _cond = []
+evalRange index _cond = [ (snd (head index), [(MinusInf, PlusInf)]) ]

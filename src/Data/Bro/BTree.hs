@@ -15,7 +15,7 @@ module Data.Bro.BTree   (BTree,
 --import Foreign.C.Types (CInt)
 import Foreign.C.String (CString, withCString)
 import Foreign.Ptr (Ptr, plusPtr)
-import Foreign.Storable (peek)
+import Foreign.Storable (peek, sizeOf)
 import Data.Int (Int32)
 
 type BTreeInst = ()
@@ -26,9 +26,8 @@ type BVal = Int32
 bNull :: BVal
 bNull = 0
 
---FIXME: set proper sizeof Int
 szInt :: Int
-szInt = 4
+szInt = sizeOf (undefined::Int32)
 
 foreign import ccall "btree.h btree_create"
     c_btreeCreate :: CString -> IO BTree
