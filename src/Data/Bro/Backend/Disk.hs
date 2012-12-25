@@ -1,8 +1,13 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
+{-# LANGUAGE CPP, RecordWildCards, NamedFieldPuns, PatternGuards #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
   , makeDiskBackend
+
+#ifdef DEBUG
+  , wrap
+  , unwrap
+#endif
   ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -42,7 +47,6 @@ instance Serialize DiskBackend where
 
 instance Backend DiskBackend where
     lookupTable name = M.lookup name <$> gets diskTables
-
     insertTable name schema = do
         res <- lookupTable name
         when (isJust res) $ throwError TableAlreadyExists
@@ -97,9 +101,6 @@ instance Query DiskBackend where
                   yield a >> go b
               | otherwise = maybe (return ()) go =<< await
 
-        unwrap :: S.ByteString -> S.ByteString
-        unwrap = S.tail . S.dropWhile (/= '\xff')
-
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot
@@ -135,10 +136,10 @@ instance Query DiskBackend where
 
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
-        | Row { rowId = Just rowId0 } <- row =
+        | Row { rowId = Just rowId } <- row =
             let bytes  = wrap tabRowSize (encode row)
                 -- Note(Sergei): rows are indexed from '1'.
-                offset = fromIntegral $ tabRowSize * (rowId0 - 1)
+                offset = fromIntegral $ tabRowSize * (rowId - 1)
             in liftIO $ do
                 IO.hSeek h AbsoluteSeek offset
                 S.hPut h bytes
@@ -155,6 +156,10 @@ wrap n s =
         EQ -> S.cons '\xff' s
         LT -> S.append (S.replicate pad '\0') $ S.cons '\xff' s
         GT -> error "row chunk size overflow"
+
+-- | @unwrap s@ removes padding, added by @wrap@.
+unwrap :: S.ByteString -> S.ByteString
+unwrap = S.tail . S.dropWhile (/= '\xff')
 
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do

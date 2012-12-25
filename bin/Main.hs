@@ -45,6 +45,6 @@ main = runBro_ (forever loop) =<< makeDiskBackend "." where
       Created   -> liftIO $ putStrLn "OK"
       Updated n -> liftIO . putStrLn $ printf "OK %i" n
       Deleted n -> liftIO . putStrLn $ printf "OK %i" n
-      Inserted id   -> liftIO . putStrLn $ printf "OK %i" id
-      Selected rows -> forM_ rows $ \(Row { rowData }) ->
+      Inserted rowId -> liftIO . putStrLn $ printf "OK %i" rowId
+      Selected rows  -> forM_ rows $ \(Row { rowData }) ->
           liftIO . S.putStrLn $ S.intercalate "," (map (S.pack . show) rowData)
