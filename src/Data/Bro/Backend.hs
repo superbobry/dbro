@@ -36,6 +36,8 @@ exec s = case s of
         Updated <$> Backend.update name exprs cond
     Delete name cond -> withTable name $ \_table ->
         Deleted <$> Backend.delete name cond
+    CreateIndex index name columns ->
+        Created <$ Backend.createIndex name index (map fst columns)
 
 remap :: Backend b
       => TableSchema
