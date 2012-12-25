@@ -75,11 +75,13 @@ statement = choice [createTable, selectFrom, insertInto, update, delete,
     createIndex = do
         -- FIXME(Sergei): current limitations: only unique BTree based
         -- indices, sort direction is ingored by the implementation!
-        tokens ["create", "unique", "index", "on"]
+        tokens ["create", "unique", "index"]
+        name  <- word
+        token "on"
         table <- tableName
         columns <- listOf1 $ (,) <$> columnName <*> direction
         tokens ["using", "btree"]
-        return $ CreateIndex table columns
+        return $ CreateIndex name table columns
 
 expr :: Parser Expr
 expr = as "expr" $! simplify <$> compound

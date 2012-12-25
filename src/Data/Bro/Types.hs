@@ -148,7 +148,7 @@ data Statement = CreateTable TableName TableSchema
                | Select TableName Projection (Maybe Condition)
                | Update TableName ![(ColumnName, Expr)] (Maybe Condition)
                | Delete TableName (Maybe Condition)
-               | CreateIndex TableName ![(ColumnName, Direction)]
+               | CreateIndex IndexName TableName ![(ColumnName, Direction)]
     deriving (Eq, Show)
 
 data RangeValue = NumericRange Int32 | MinusInf | PlusInf
