@@ -14,6 +14,23 @@ Flag debug
     Description: Compile with debug output.
     Default:     False
 
+
+executable check
+  hs-source-dirs: bin
+  ghc-options:    -Wall -fwarn-unused-imports -fno-warn-orphans
+
+  if !flag(debug)
+    buildable:    False
+
+  main-is:        Check.hs
+
+  build-depends:    base
+                  , bytestring == 0.10.*
+                  , mtl == 2.1.*
+                  , temporary == 1.1.*
+                  , dbro
+
+
 executable dbro
   hs-source-dirs: bin
   ghc-options:    -Wall -fwarn-unused-imports -fno-warn-orphans
