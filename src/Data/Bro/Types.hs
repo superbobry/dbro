@@ -58,7 +58,7 @@ instance Serialize ColumnType where
         'i' -> return IntegerColumn
         'd' -> return DoubleColumn
         'v' -> VarcharColumn <$> get
-        _   -> error $ "Not a valid column type: " ++ [tag]
+        _   -> fail $ "Not a valid column type: " ++ [tag]
 
 data ColumnValue = IntegerValue {-# UNPACK #-} !Int32
                  | DoubleValue  {-# UNPACK #-} !Double
@@ -79,7 +79,7 @@ instance Serialize ColumnValue where
         'i' -> IntegerValue <$> get
         'd' -> DoubleValue <$> get
         'v' -> VarcharValue <$> get
-        _   -> error $ "Not a valid column value: " ++ [tag]
+        _   -> fail $ "Not a valid column value: " ++ [tag]
 
 type TableName = S.ByteString
 type TableSchema = [(ColumnName, ColumnType)]
