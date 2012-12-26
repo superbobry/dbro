@@ -19,7 +19,7 @@ import qualified Data.ByteString.Char8 as S
 import qualified System.IO as IO
 
 import Control.Monad.Error (throwError)
-import Control.Monad.State (gets, modify)
+import Control.Monad.State (get, gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (encode, decode)
 import Data.Conduit (Source, Conduit, ($=), ($$), addCleanup)
@@ -50,9 +50,8 @@ instance Backend DiskBackend where
         when (isJust res) $ throwError TableAlreadyExists
         modifyBackend $ \b@(DiskBackend { .. }) ->
             b { diskTables = M.insert name table diskTables }
-        diskRoot <- gets diskRoot
-        liftIO $! IO.withBinaryFile
-            (diskRoot </> S.unpack name) WriteMode IO.hFlush
+        tabPath <- whereIs name
+        liftIO $! IO.withBinaryFile tabPath WriteMode IO.hFlush
       where
         table :: Table
         table = def { tabName = name
@@ -67,23 +66,19 @@ instance Backend DiskBackend where
 
     modifyBackend f = do
         modify f
-        -- FIXME(Sergei): unfortunately, we can't use 'get' from the
-        -- 'Control.Monad.State' here, because of the name clash with
-        -- 'get' from 'Data.Binary'.
-        diskRoot   <- gets diskRoot
-        diskTables <- gets diskTables
-        liftIO $! S.writeFile  (diskRoot </> "_index") (encode diskTables)
+        DiskBackend { diskRoot, diskTables } <- get
+        liftIO $! S.writeFile (diskRoot </> "_index") (encode diskTables)
 
     deleteTable name = withTable name $ \Table { tabName } -> do
-        diskRoot <- gets diskRoot
-        liftIO $! removeFile (diskRoot </> S.unpack tabName)
+        tabPath <- whereIs tabName
+        liftIO $! removeFile tabPath
 
 instance Query DiskBackend where
     selectAll (Table { .. }) cond = do
         let indexes = evalRange tabIndex cond
-        rowIds   <- liftIO $ getRecFromIndex indexes
-        diskRoot <- lift $ gets diskRoot
-        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
+        rowIds  <- liftIO $ getRecFromIndex indexes
+        tabPath <- lift $ whereIs tabName
+        h <- liftIO $ IO.openBinaryFile tabPath ReadWriteMode
         lift $ modify (\b@(DiskBackend { diskHandles }) ->
                         b { diskHandles = M.insert tabName h diskHandles })
         liftIO $ IO.hSetBuffering h NoBuffering
@@ -99,10 +94,10 @@ instance Query DiskBackend where
             sourceRows $= decoduit $= CL.catMaybes
 
     insertInto (Table { .. }) row@(Row { rowId = Nothing, .. }) = do
-        diskRoot <- gets diskRoot
+        tabPath <- whereIs tabName
         let newRow = row { rowId = Just tabCounter }
-        let bytes = wrap (fromIntegral tabRowSize) . encode $! newRow
-        liftIO $! S.appendFile (diskRoot </> S.unpack tabName) bytes
+        let bytes  = wrap (fromIntegral tabRowSize) . encode $! newRow
+        liftIO $! S.appendFile tabPath bytes
         keepIndex tabSchema newRow tabIndex
         modifyTable tabName $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
@@ -200,6 +195,10 @@ getRecFromIndex ((n, r):indexes) = do
           return $ res ++ res'
       getSeq _tree [] = return []
 getRecFromIndex [] = return []
+
+whereIs :: TableName -> Bro BackendError DiskBackend FilePath
+whereIs name = (</> S.unpack name) <$> gets diskRoot
+{-# INLINE whereIs #-}
 
 -- | A source, which yields chunks of size @n@ from a given @handle@.
 sourceChunks :: MonadIO m

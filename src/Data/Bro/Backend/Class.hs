@@ -10,7 +10,6 @@ module Data.Bro.Backend.Class
 
 import Control.Monad.State (modify)
 import Control.Monad.Error (throwError)
-import Control.Monad.Trans (lift)
 import Data.Conduit (Source, Conduit, ($=))
 import qualified Data.Conduit.List as CL
 
