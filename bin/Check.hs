@@ -3,8 +3,9 @@
 module Main where
 
 import Control.Applicative ((<$>))
-import Control.Monad (replicateM_, void)
-import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive)
+import Control.Monad (replicateM_, void, when)
+import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive,
+                         doesDirectoryExist)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as S
@@ -27,7 +28,8 @@ import qualified Data.Bro.Backend as Backend
 
 main :: IO ()
 main = do
-    removeDirectoryRecursive root
+    exists <- doesDirectoryExist root
+    when exists $ removeDirectoryRecursive root
     createDirectoryIfMissing True root
     runBro_ go =<< makeDiskBackend root
   where
