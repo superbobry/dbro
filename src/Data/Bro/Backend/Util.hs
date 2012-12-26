@@ -1,12 +1,15 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Data.Bro.Backend.Util
-  ( rowSize,
-    rangeToVal
+  ( rowSize
+  , rangeToVal
+  , wrap
+  , unwrap
   ) where
 
 import Data.Int (Int64, Int32)
 import Foreign.Storable (sizeOf)
+import qualified Data.ByteString.Char8 as S
 
 import Data.Bro.Types (ColumnType(..), TableSchema, RangeValue(..))
 
@@ -40,3 +43,19 @@ rangeToVal PlusInf = maxBound::Int32
 
 --maxInt :: Int
 --maxInt = maxBound::Int
+
+-- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
+-- where @\xff@ starts data segment. A given chunk is expected to
+-- be shorter than @n - 1@ to fit the @\xff@ tag.
+wrap :: Int -> S.ByteString -> S.ByteString
+wrap n s =
+    let len = fromIntegral $ S.length s
+        pad = fromIntegral $ n - 1 - len
+    in case compare len (n - 1) of
+        EQ -> S.cons '\xff' s
+        LT -> S.append (S.replicate pad '\0') $ S.cons '\xff' s
+        GT -> error "row chunk size overflow"
+
+-- | @unwrap s@ removes padding, added by @wrap@.
+unwrap :: S.ByteString -> S.ByteString
+unwrap = S.tail . S.dropWhile (/= '\xff')

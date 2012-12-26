@@ -52,26 +52,27 @@ foreign import ccall "btree.h btree_close"
     c_btreeClose :: BTree -> IO ()
 
 foreign import ccall "btree.h btree_free"
-    c_btreeFree :: (Ptr BVal) -> IO ()
+    c_btreeFree :: Ptr BVal -> IO ()
 
 btreeOpen :: String -> IO BTree
 btreeOpen path = withCString path c_btreeCreate
 
 btreeClose :: BTree -> IO ()
-btreeClose tree = c_btreeClose tree
+btreeClose = c_btreeClose
 
 btreeAdd :: BTree -> BKey -> BVal -> IO ()
-btreeAdd tree key val = c_btreeAdd tree key val
+btreeAdd = c_btreeAdd
 
 btreeEraseAll :: BTree -> BKey -> IO ()
-btreeEraseAll tree key = c_btreeEraseAll tree key
+btreeEraseAll = c_btreeEraseAll
 
 btreeErase :: BTree -> BKey -> BVal -> IO ()
 btreeErase _tree _key _val = undefined --c_btreeErase tree key val (not implemented yet)
 
 btreeFind :: BTree -> BKey -> IO (Maybe BVal)
-btreeFind tree key = c_btreeFind tree key >>=
-                        \f -> return $ if f /= bNull then Just f else Nothing
+btreeFind tree key = do
+    v <- c_btreeFind tree key
+    return $ if v /= bNull then Just v else Nothing
 
 btreeFindRange :: BTree -> BKey -> BKey -> IO [BVal]
 btreeFindRange tree beg end = do

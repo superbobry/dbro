@@ -1,19 +1,16 @@
-{-# LANGUAGE CPP, RecordWildCards, NamedFieldPuns, PatternGuards #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
   , makeDiskBackend
-
-#ifdef DEBUG
-  , wrap
-  , unwrap
-#endif
   ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (when)
+import Control.Monad (when, unless)
+import Data.Int (Int32)
+import Data.List (findIndex)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (fromJust, isNothing, isJust)
 import System.Directory (doesFileExist, removeFile)
 import System.IO (IOMode(..), SeekMode(..))
 import System.FilePath ((</>))
@@ -29,19 +26,15 @@ import Data.Conduit (Conduit, ($=), ($$), await, yield, addCleanup)
 import Data.Conduit.Binary (sourceFile)
 import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
-import Data.Maybe (fromJust, isNothing)
-import Data.List (findIndex)
-import Data.Int (Int32)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
                                withTable, fetchTable, updateRow)
 import Data.Bro.Backend.Error (BackendError(..))
-import Data.Bro.Backend.Util (rowSize)
-import Data.Bro.Backend.Util (rangeToVal)
+import Data.Bro.Backend.Util (rowSize, rangeToVal, wrap, unwrap)
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types   (TableName, IndexName, Table(..), Row(..), Projection(..),
-                        Range, isIntegral, toIntegral, RowId)
+import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), Projection(..),
+                       Range, RowId, isIntegral, toIntegral)
 import Data.Bro.Condition (evalRange)
 import Data.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
 
@@ -118,7 +111,7 @@ instance Query DiskBackend where
               | S.length acc >= n =
                   let (a, b) = S.splitAt n acc in
                   yield a >> go b
-              | otherwise = maybe (return ()) go =<< await
+              | otherwise = await >>= maybe (return ()) (go . S.append acc)
 
         readChunk :: Backend b => IO.Handle -> Int32 -> RowId -> Bro BackendError b Row
         readChunk h tSize rId = do
@@ -169,7 +162,7 @@ instance Query DiskBackend where
         go table (col:cols) = do
             let colType = lookup col $ tabSchema table
             when (isNothing colType) $ error "Column name not found"
-            when (not $ isIntegral $ fromJust colType) $
+            unless (isIntegral $ fromJust colType) $
                 error "Only index by integral type is supported"
             when (isJust $ lookup col $ tabIndex table) $
                 error "Index already exists"
@@ -226,22 +219,6 @@ getRecFromIndex ((n, r):indexes) = do
           return $ res ++ res'
       getSeq _tree [] = return []
 getRecFromIndex [] = return []
-
--- | @wrap n s@ padds row chunk with a prefix of @\0\0...\xff@,
--- where @\xff@ starts data segment. A given chunk is expected to
--- be shorter than @n - 1@ to fit the @\xff@ tag.
-wrap :: Int -> S.ByteString -> S.ByteString
-wrap n s =
-    let len = fromIntegral $ S.length s
-        pad = fromIntegral $ n - 1 - len
-    in case compare len (n - 1) of
-        EQ -> S.cons '\xff' s
-        LT -> S.append (S.replicate pad '\0') $ S.cons '\xff' s
-        GT -> error "row chunk size overflow"
-
--- | @unwrap s@ removes padding, added by @wrap@.
-unwrap :: S.ByteString -> S.ByteString
-unwrap = S.tail . S.dropWhile (/= '\xff')
 
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do

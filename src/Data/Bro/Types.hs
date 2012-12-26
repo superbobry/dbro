@@ -23,7 +23,7 @@ module Data.Bro.Types
   ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Data.Serialize (Serialize(..), get, put)
+import Data.Serialize (Serialize(..), get, put, label)
 import Data.Maybe (isNothing)
 import Data.Int (Int32)
 import Data.Word (Word8)
@@ -48,7 +48,7 @@ instance Serialize Row where
     put (Row { rowId }) | isNothing rowId = fail "Row is missing an id"
     put (Row { .. }) = put rowId >> put rowData >> put rowIsDeleted
 
-    get = Row <$> get <*> get <*> get
+    get = label "row" $ Row <$> get <*> get <*> get
 
 type ColumnName = S.ByteString
 data ColumnType = IntegerColumn
@@ -61,7 +61,7 @@ instance Serialize ColumnType where
     put DoubleColumn  = put 'd'
     put (VarcharColumn l) = put 'v' >> put l
 
-    get = get >>= \tag -> case tag of
+    get = label "column type" $ get >>= \tag -> case tag of
         'i' -> return IntegerColumn
         'd' -> return DoubleColumn
         'v' -> VarcharColumn <$> get
@@ -82,11 +82,11 @@ instance Serialize ColumnValue where
     put (DoubleValue d)  = put 'd' >> put d
     put (VarcharValue s) = put 'v' >> put s
 
-    get = get >>= \tag -> case tag of
+    get = label "column value" $ get >>= \tag -> case tag of
         'i' -> IntegerValue <$> get
         'd' -> DoubleValue <$> get
         'v' -> VarcharValue <$> get
-        _   -> fail $ "Not a valid column value: " ++ [tag]
+        _   -> fail $ "Not a valid column value: " ++ show tag
 
 type TableName = S.ByteString
 type IndexName = S.ByteString
