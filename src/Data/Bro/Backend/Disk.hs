@@ -122,11 +122,11 @@ instance Query DiskBackend where
 
     delete table@(Table { .. }) c = do
         count <- select table (Projection []) c $=
-                 CL.map (\r -> r { rowIsDeleted = True }) $=
-                 CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
+                 CL.map (\r -> r { rowIsDeleted = True }) $$
                  CL.foldM (\acc row -> do
-                            h <- gets $ (! tabName) . diskHandles
-                            rewriteRow h table row >> return (acc + 1)) 0
+                                keepIndex tabSchema row tabIndex
+                                h <- gets $ (! tabName) . diskHandles
+                                rewriteRow h table row >> return (acc + 1)) 0
         modifyTable tabName $ \table -> table { tabSize = tabSize - count }
         return $ fromIntegral count
       where
