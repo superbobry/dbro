@@ -34,7 +34,7 @@ main = do
     runBro_ go =<< makeDiskBackend root
   where
     n :: Int
-    n = 200000
+    n = 100000
 
     root :: FilePath
     root = "check"

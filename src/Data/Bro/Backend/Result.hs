@@ -12,7 +12,7 @@ import Data.Bro.Types (Row, RowId)
 data (Backend b, Query b) => BackendResult b
     = Created
     | Inserted RowId
-    | Selected (Source (Bro BackendError b) Row)
+    | Selected !(Source (Bro BackendError b) Row)
     | Updated Int
     | Deleted Int
     | CreatedIndex

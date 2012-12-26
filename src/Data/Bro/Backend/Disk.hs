@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards, OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
@@ -12,7 +13,7 @@ import Data.List (findIndex)
 import Data.Map (Map)
 import Data.Maybe (fromJust, isJust)
 import System.Directory (doesFileExist, removeFile)
-import System.IO (IOMode(..), SeekMode(..))
+import System.IO (IOMode(..), SeekMode(..), BufferMode(..))
 import System.FilePath ((</>))
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as S
@@ -22,8 +23,7 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
-import Data.Conduit (Conduit, ($=), ($$), await, yield, addCleanup)
-import Data.Conduit.Binary (sourceFile)
+import Data.Conduit (Source, ($=), ($$), yield, addCleanup)
 import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
@@ -49,6 +49,7 @@ instance Serialize DiskBackend where
 
 instance Backend DiskBackend where
     lookupTable name = M.lookup name <$> gets diskTables
+
     insertTable name schema = do
         res <- lookupTable name
         when (isJust res) $ throwError TableAlreadyExists
@@ -85,33 +86,28 @@ instance Backend DiskBackend where
 instance Query DiskBackend where
     selectAll name cond = do
         Table { tabName, tabRowSize, tabIndex } <- lift $ fetchTable name
-        --liftIO $ print tabIndex
         let indexes = evalRange tabIndex cond
-        --liftIO $ print $ indexes
-        rIds <- lift $ liftIO $ getRecFromIndex indexes
-        --liftIO $ print rIds
+        rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
-        if null rIds
-            then sourceFile (diskRoot </> S.unpack tabName) $=
-                 slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
-            else do
-                h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
-                addCleanup (\_done -> liftIO $ IO.hClose h) $ CL.sourceList rIds $=
-                    CL.mapM (readChunk h tabRowSize)
+        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
+        liftIO $ IO.hSetBuffering h NoBuffering
+        addCleanup (\_done -> liftIO $ IO.hClose h) $ case rowIds of
+            []    -> sourceChunks h (fromIntegral tabRowSize) $=
+                     CL.map decoduit $= CL.catMaybes
+            (_:_) -> CL.sourceList rowIds $= CL.mapM (readChunk h tabRowSize)
       where
+        sourceChunks :: MonadIO m => IO.Handle -> Int -> Source m S.ByteString
+        sourceChunks !h !n = do
+            bs <- liftIO (S.hGet h n)
+            if S.null bs
+                then return ()
+                else yield bs >> sourceChunks h n
+
         decoduit :: S.ByteString -> Maybe Row
         decoduit bytes = case decode (unwrap bytes) of
             Right (Row { rowIsDeleted = True }) -> Nothing
             Right row -> Just row
             Left e    -> error e -- FIXME(Sergei): return a proper failure?
-
-        slice :: Monad m => Int -> Conduit S.ByteString m S.ByteString
-        slice n = go S.empty where
-          go acc
-              | S.length acc >= n =
-                  let (a, b) = S.splitAt n acc in
-                  yield a >> go b
-              | otherwise = await >>= maybe (return ()) (go . S.append acc)
 
         readChunk :: Backend b => IO.Handle -> Int32 -> RowId -> Bro BackendError b Row
         readChunk h tSize rId = do
