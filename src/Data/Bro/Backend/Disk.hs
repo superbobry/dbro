@@ -32,9 +32,10 @@ import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize, rangeToVal, wrap, unwrap)
 import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), ColumnType(..),
-                       Projection(..), Range, RowId, toIntegral)
+                       Projection(..), Range, RowId, toIntegral, TableSchema,
+                       TableIndex)
 import Data.Bro.Condition (evalRange)
-import Data.BTree   (BTree, BVal, btreeOpen, btreeClose, btreeFindRange,
+import Data.BTree   (BTree, BVal, BKey, btreeOpen, btreeClose, btreeFindRange,
                     btreeAdd, btreeEraseAll)
 
 data DiskBackend = DiskBackend { diskRoot    :: FilePath
@@ -98,19 +99,10 @@ instance Query DiskBackend where
         let newRow = row { rowId = Just tabCounter }
         let bytes  = wrap (fromIntegral tabRowSize) . encode $! newRow
         liftIO $! S.appendFile tabPath bytes
-        keepIndex tabSchema newRow tabIndex
+        withBtree tabSchema tabIndex newRow btreeAdd
         modifyTable tabName $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return tabCounter
-      where
-        keepIndex schema newRow (index:index') = do
-            tree <- liftIO $ btreeOpen $ S.unpack (snd index)
-            let colName = fst index
-            let colId = findIndex (\(n,_) -> n == colName) schema
-            rowBtreeInsert tree (fromJust colId) newRow
-            liftIO $ btreeClose tree
-            keepIndex schema newRow index'
-        keepIndex _schema _row [] = return ()
     insertInto _name _row = error "Inserting existing Row"
 
     update table@(Table { tabName }) exprs c =
@@ -124,21 +116,12 @@ instance Query DiskBackend where
         count <- select table (Projection []) c $=
                  CL.map (\r -> r { rowIsDeleted = True }) $$
                  CL.foldM (\acc row -> do
-                                keepIndex tabSchema row tabIndex
+                                withBtree tabSchema tabIndex row $ \t k _v ->
+                                    btreeEraseAll t k
                                 h <- gets $ (! tabName) . diskHandles
                                 rewriteRow h table row >> return (acc + 1)) 0
         modifyTable tabName $ \table -> table { tabSize = tabSize - count }
         return $ fromIntegral count
-      where
-        -- FIXME(Misha): we`ve got overhead of opening/closing btree here
-        -- good way should be iterate by indexes and then by rows
-        keepIndex schema row indexes = forM_ indexes $ \(colName, path) -> do
-            tree <- liftIO $ btreeOpen (S.unpack path)
-            let colId = findIndex (\(n,_) -> n == colName) schema
-            let key = toIntegral $ (rowData row) !! (fromJust colId)
-            liftIO $ do
-                btreeEraseAll tree key
-                btreeClose tree
 
     createIndex table@(Table { .. }) indName colNames = forM_ colNames $ \col -> do
         case lookup col tabSchema of
@@ -159,12 +142,6 @@ instance Query DiskBackend where
         modifyTable tabName $ \_table ->
             table { tabIndex = (col, fileName):tabIndex }
 
-rowBtreeInsert :: (Backend b, Query b) => BTree -> Int -> Row ->
-                                            Bro BackendError b ()
-rowBtreeInsert tree colId row = do
-    let key = toIntegral $ (rowData row) !! colId
-    liftIO $ btreeAdd tree key $ fromJust (rowId row)
-
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
         | Row { rowId = Just rowId } <- row =
@@ -176,7 +153,6 @@ rewriteRow h (Table { tabRowSize }) row
                 S.hPut h bytes
         | otherwise = error "can't update row without row id"
 
--- TODO: return as source (or not?)
 getRecFromIndex :: [(IndexName, Range)] -> IO [RowId]
 getRecFromIndex ((n, r):indexes) = do
     tree <- btreeOpen $ S.unpack n
@@ -195,6 +171,15 @@ getRecFromIndex ((n, r):indexes) = do
           return $ res ++ res'
       getSeq _tree [] = return []
 getRecFromIndex [] = return []
+
+withBtree :: Backend b => TableSchema -> TableIndex -> Row ->
+            (BTree -> BKey -> BVal -> IO ()) -> Bro BackendError b ()
+withBtree schema index row f = forM_ index $ \(colName, path) -> do
+            tree <- liftIO $ btreeOpen $ S.unpack path
+            let colId = findIndex (\(n,_) -> n == colName) schema
+            let key = toIntegral $ (rowData row) !! (fromJust colId)
+            liftIO $ f tree key $ fromJust (rowId row)
+            liftIO $ btreeClose tree
 
 whereIs :: TableName -> Bro BackendError DiskBackend FilePath
 whereIs name = (</> S.unpack name) <$> gets diskRoot
