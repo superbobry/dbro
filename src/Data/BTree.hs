@@ -1,16 +1,17 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ForeignFunctionInterface, TypeSynonymInstances #-}
 
-module Data.Bro.BTree   (BTree,
-                        BKey,
-                        BVal,
-                        btreeOpen,
-                        btreeClose,
-                        btreeAdd,
-                        btreeEraseAll,
-                        btreeErase,
-                        btreeFind,
-                        btreeFindRange) where
+module Data.BTree
+  ( BTree
+  , BKey
+  , BVal
+  , btreeOpen
+  , btreeClose
+  , btreeAdd
+  , btreeEraseAll
+  , btreeErase
+  , btreeFind
+  , btreeFindRange
+  ) where
 
 --import Foreign.C.Types (CInt)
 import Foreign.C.String (CString, withCString)
@@ -85,4 +86,3 @@ btreeFindRange tree beg end = do
             then resultList (plusPtr ptr szInt) >>= \l ->
                 return $ val : l
             else return []
-

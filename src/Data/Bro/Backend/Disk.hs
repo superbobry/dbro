@@ -43,7 +43,7 @@ import Data.Bro.Monad (Bro)
 import Data.Bro.Types   (TableName, IndexName, Table(..), Row(..), Projection(..),
                         Range, isIntegral, toIntegral, RowId)
 import Data.Bro.Condition (evalRange)
-import Data.Bro.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
+import Data.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)

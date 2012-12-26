@@ -53,8 +53,8 @@ library
     cpp-options: -DDEBUG
 
   c-sources:
-    src/Foreign/BTree/btree.cpp
-    src/Foreign/BTree/btree_impl.cpp
+    src/Data/BTree/btree.cpp
+    src/Data/BTree/btree_impl.cpp
 
   extra-libraries: stdc++
 
@@ -72,7 +72,8 @@ library
     Data.Bro.Simple
     Data.Bro.Types
     Data.Bro.Parser
-    Data.Bro.BTree
+
+    Data.BTree
 
   build-depends:    base
                   , safe == 0.3.*
