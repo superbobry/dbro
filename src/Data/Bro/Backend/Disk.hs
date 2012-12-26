@@ -129,7 +129,6 @@ instance Query DiskBackend where
                 Right row   -> return row
                 Left e      -> error e
 
-
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize } <- fetchTable name
         diskRoot <- gets diskRoot

@@ -45,11 +45,11 @@ main = do
             putStrLn $ printf "Row size: %i bytes" (rowSize schema)
             putStrLn $ printf "Inserting %i values ..." n
         void . Backend.exec $ CreateTable name schema
+        replicateM_ n $ Backend.exec $ InsertInto name []
+            [IntegerValue 42, DoubleValue 42.0, VarcharValue "foobar"]
         liftIO $ do
             size <- S.length <$> S.readFile (root </> S.unpack name)
             putStrLn $ printf "Table size: %i" size
-        replicateM_ n $ Backend.exec $ InsertInto name []
-            [IntegerValue 42, DoubleValue 42.0, VarcharValue "foobar"]
         liftIO . putStrLn $ printf "Selecting %i values ..." n
         Selected rows <-Backend.exec $ Select name (Projection []) Nothing
         mapM_ (liftIO . print) rows
