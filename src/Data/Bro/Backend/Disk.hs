@@ -6,10 +6,10 @@ module Data.Bro.Backend.Disk
   , makeDiskBackend
   ) where
 
-import Control.Applicative ((<$>), (<*>), (<|>))
+import Control.Applicative ((<$>), (<|>))
 import Control.Monad (when, forM_)
 import Data.List (findIndex)
-import Data.Map (Map)
+import Data.Map (Map, (!))
 import Data.Maybe (fromJust, isJust)
 import System.Directory (doesFileExist, removeFile)
 import System.IO (IOMode(..), SeekMode(..), BufferMode(..))
@@ -21,7 +21,7 @@ import qualified System.IO as IO
 import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
-import Data.Serialize (Serialize, put, get, encode, decode)
+import Data.Serialize (encode, decode)
 import Data.Conduit (Source, ($=), ($$), addCleanup)
 import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
@@ -38,14 +38,10 @@ import Data.Bro.Condition (evalRange)
 import Data.BTree   (BTree, BVal, btreeOpen, btreeClose, btreeFindRange,
                     btreeAdd, btreeEraseAll)
 
-data DiskBackend = DiskBackend { diskRoot   :: FilePath
-                               , diskTables :: !(Map TableName Table)
+data DiskBackend = DiskBackend { diskRoot    :: FilePath
+                               , diskTables  :: !(Map TableName Table)
+                               , diskHandles :: !(Map TableName IO.Handle)
                                }
-
-instance Serialize DiskBackend where
-    put (DiskBackend { .. }) = put diskRoot >> put diskTables
-
-    get = DiskBackend <$> get <*> get
 
 instance Backend DiskBackend where
     lookupTable name = M.lookup name <$> gets diskTables
@@ -90,11 +86,16 @@ instance Query DiskBackend where
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
         h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
+        lift $ modify (\b@(DiskBackend { diskHandles }) ->
+                        b { diskHandles = M.insert tabName h diskHandles })
         liftIO $ IO.hSetBuffering h NoBuffering
         let sourceRows = sourceChunks h
                          (fromIntegral tabRowSize)
                          (rowIds <|> replicate (fromIntegral tabSize) 0)
-        addCleanup (\_done -> liftIO (IO.hClose h)) $!
+        addCleanup (\_done -> do
+                         modify (\b@(DiskBackend { diskHandles }) ->
+                                  b { diskHandles = M.delete tabName diskHandles })
+                         liftIO $ IO.hClose h) $!
             sourceRows $= CL.map decoduit $= CL.catMaybes
 
 
@@ -121,22 +122,20 @@ instance Query DiskBackend where
 
     update name exprs c = do
         table@(Table { tabName }) <- fetchTable name
-        diskRoot <- gets diskRoot
-        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
-        count <- select name (Projection []) c $=
-                 CL.map (updateRow table exprs) $$
-                 CL.foldM (\acc row -> rewriteRow h table row >> return (acc + 1)) 0
-        liftIO $ IO.hClose h
-        return count
+        select name (Projection []) c $=
+            CL.map (updateRow table exprs) $$
+            CL.foldM (\acc row -> do
+                           h <- gets $ (! tabName) . diskHandles
+                           rewriteRow h table row >> return (acc + 1)) 0
 
     delete name c = do
-        table@(Table { tabName, tabSize, tabIndex, tabSchema }) <- fetchTable name
-        diskRoot <- gets diskRoot
-        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
+        table@(Table { tabName, tabSize, tabSchema, tabIndex }) <- fetchTable name
         count <- select name (Projection []) c $=
                  CL.map (\r -> r { rowIsDeleted = True }) $=
                  CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
-                 CL.foldM (\acc row -> rewriteRow h table row >> return (acc + 1)) 0
+                 CL.foldM (\acc row -> do
+                            h <- gets $ (! tabName) . diskHandles
+                            rewriteRow h table row >> return (acc + 1)) 0
         modifyTable name $ \_table ->
             -- FIXME(Sergei): we assume the state doesn't change during
             -- 'delete' operation, since no concurency is involved.
@@ -242,6 +241,6 @@ makeDiskBackend root = do
                       Left err -> fail err
                       Right i  -> return i
               else return M.empty
-    return $! DiskBackend root tables
+    return $! DiskBackend root tables M.empty
   where
     index = root </> "_index"
