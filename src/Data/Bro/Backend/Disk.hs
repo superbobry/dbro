@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns, PatternGuards, OverloadedStrings #-}
 
 module Data.Bro.Backend.Disk
   ( DiskBackend
@@ -6,11 +6,11 @@ module Data.Bro.Backend.Disk
   ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (when, unless)
+import Control.Monad (when, forM_)
 import Data.Int (Int32)
 import Data.List (findIndex)
 import Data.Map (Map)
-import Data.Maybe (fromJust, isNothing, isJust)
+import Data.Maybe (fromJust, isJust)
 import System.Directory (doesFileExist, removeFile)
 import System.IO (IOMode(..), SeekMode(..))
 import System.FilePath ((</>))
@@ -33,8 +33,8 @@ import Data.Bro.Backend.Class (Backend(..), Query(..),
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize, rangeToVal, wrap, unwrap)
 import Data.Bro.Monad (Bro)
-import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), Projection(..),
-                       Range, RowId, isIntegral, toIntegral)
+import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), ColumnType(..),
+                       Projection(..), Range, RowId, toIntegral)
 import Data.Bro.Condition (evalRange)
 import Data.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
 
@@ -156,23 +156,22 @@ instance Query DiskBackend where
         return $ fromIntegral count
 
     createIndex tName indName colNames = do
-        table <- fetchTable tName
-        go table colNames
-      where
-        go table (col:cols) = do
-            let colType = lookup col $ tabSchema table
-            when (isNothing colType) $ error "Column name not found"
-            unless (isIntegral $ fromJust colType) $
-                error "Only index by integral type is supported"
-            when (isJust $ lookup col $ tabIndex table) $
-                error "Index already exists"
-            let fileName = S.intercalate (S.pack "_") [tName, indName, col]
-            let colId = findIndex (\(n,_) -> n == col) (tabSchema table)
+        table@(Table { tabIndex, tabSchema }) <- fetchTable tName
+        forM_ colNames $ \col -> do
+            case lookup col tabSchema of
+                Nothing -> throwError ColumnDoesNotExist
+                Just t | t /= IntegerColumn ->
+                    throwError $ ColumnTypeUnsupported t
+                Just _t -> return ()
+
+            when (isJust $ lookup col tabIndex) $
+                throwError IndexAlreadyExists
+
+            let fileName = S.intercalate "_" [tName, indName, col]
+            let colId = findIndex (\(n,_) -> n == col) tabSchema
             insertIntoBtree (S.unpack fileName) tName $ fromJust colId
             modifyTable tName $ \_table ->
-                table { tabIndex = (col, fileName):(tabIndex table) }
-            go table cols   --is instance of table updated here?
-        go _tbl [] = return ()
+                table { tabIndex = (col, fileName):tabIndex }
 
 insertIntoBtree :: (Backend b, Query b) => FilePath -> TableName ->
                                             Int -> Bro BackendError b ()

@@ -8,7 +8,10 @@ import Data.Bro.Types (ColumnName, ColumnType, ColumnValue)
 
 data BackendError = TableDoesNotExist
                   | TableAlreadyExists
+                  | IndexAlreadyExists
+                  | ColumnDoesNotExist
                   | ColumnTypeMismatch ColumnValue ColumnType
+                  | ColumnTypeUnsupported ColumnType
                   | ColumnValueMissing ColumnName
                   | UnknownError String
     deriving Show
