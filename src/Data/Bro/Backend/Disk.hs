@@ -22,8 +22,7 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (encode, decode)
-import Data.Conduit (Source, ($=), ($$), addCleanup)
-import Data.Conduit.Lazy (lazyConsume)
+import Data.Conduit (Source, Conduit, ($=), ($$), addCleanup)
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
 
@@ -81,7 +80,7 @@ instance Backend DiskBackend where
 
 instance Query DiskBackend where
     selectAll name cond = do
-        Table { tabName, tabRowSize, tabIndex, tabCounter } <- lift $ fetchTable name
+        Table { .. } <- lift $ fetchTable name
         let indexes = evalRange tabIndex cond
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
@@ -91,16 +90,15 @@ instance Query DiskBackend where
         liftIO $ IO.hSetBuffering h NoBuffering
         let sourceRows = sourceChunks h
                          (fromIntegral tabRowSize)
-                         --Note(Misha): <|> behaves not as expected :(
+                         -- Note(Misha): <|> behaves not as expected :(
                          (if null rowIds
-                            then replicate (fromIntegral $ tabCounter - 1) 0
-                            else rowIds)
+                          then replicate (fromIntegral $ tabCounter - 1) 0
+                          else rowIds)
         addCleanup (\_done -> do
                          modify (\b@(DiskBackend { diskHandles }) ->
                                   b { diskHandles = M.delete tabName diskHandles })
                          liftIO $ IO.hClose h) $!
-            sourceRows $= CL.map decoduit $= CL.catMaybes
-
+            sourceRows $= decoduit $= CL.catMaybes
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize, tabIndex, tabSchema } <- fetchTable name
@@ -111,7 +109,7 @@ instance Query DiskBackend where
         keepIndex tabSchema newRow tabIndex
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
-        return $! 1 -- "OK 1"
+        return tabCounter
       where
         keepIndex schema newRow (index:index') = do
             tree <- liftIO $ btreeOpen $ S.unpack (snd index)
@@ -132,10 +130,10 @@ instance Query DiskBackend where
                            rewriteRow h table row >> return (acc + 1)) 0
 
     delete name c = do
-        table@(Table { tabName, tabSize, tabSchema, tabIndex }) <- fetchTable name
+        table@(Table { .. }) <- fetchTable name
         count <- select name (Projection []) c $=
-                 CL.map (\r -> r { rowIsDeleted = True }) $$
-                 --CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$  <- ADD KEEPINDEX HERE
+                 CL.map (\r -> r { rowIsDeleted = True }) $=
+                 CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
                  CL.foldM (\acc row -> do
                             h <- gets $ (! tabName) . diskHandles
                             rewriteRow h table row >> return (acc + 1)) 0
@@ -147,15 +145,13 @@ instance Query DiskBackend where
       where
         -- FIXME(Misha): we`ve got overhead of opening/closing btree here
         -- good way should be iterate by indexes and then by rows
-        keepIndex schema row indexes = do
-            forM_ indexes $ \index -> do
-                tree <- liftIO $ btreeOpen $ S.unpack (snd index)
-                let colName = fst index
-                let colId = findIndex (\(n,_) -> n == colName) schema
-                let key = toIntegral $ (rowData row) !! (fromJust colId)
-                liftIO $ btreeEraseAll tree key
-                liftIO $ btreeClose tree
-                return ()
+        keepIndex schema row indexes = forM_ indexes $ \(colName, _dir) -> do
+            tree <- liftIO $ btreeOpen (S.unpack colName)
+            let colId = findIndex (\(n,_) -> n == colName) schema
+            let key = toIntegral $ (rowData row) !! (fromJust colId)
+            liftIO $ do
+                btreeEraseAll tree key
+                btreeClose tree
 
     createIndex tName indName colNames = do
         table@(Table { tabIndex, tabSchema }) <- fetchTable tName
@@ -182,8 +178,8 @@ instance Query DiskBackend where
 rowBtreeInsert :: (Backend b, Query b) => BTree -> Int -> Row ->
                                             Bro BackendError b ()
 rowBtreeInsert tree colId row = do
-        let key = toIntegral $ (rowData row) !! colId
-        liftIO $ btreeAdd tree key $ fromJust (rowId row)
+    let key = toIntegral $ (rowData row) !! colId
+    liftIO $ btreeAdd tree key $ fromJust (rowId row)
 
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
@@ -216,6 +212,7 @@ getRecFromIndex ((n, r):indexes) = do
       getSeq _tree [] = return []
 getRecFromIndex [] = return []
 
+-- | A source, which yields chunks of size @n@ from a given @handle@.
 sourceChunks :: MonadIO m
              => IO.Handle -> Int -> [RowId] -> Source m S.ByteString
 sourceChunks !h n rowIds = CL.sourceList rowIds $= CL.mapM f where
@@ -225,11 +222,13 @@ sourceChunks !h n rowIds = CL.sourceList rowIds $= CL.mapM f where
           when (rowId /= 0) $! IO.hSeek h AbsoluteSeek offset
           S.hGet h n
 
-decoduit :: S.ByteString -> Maybe Row
-decoduit !bytes = case decode (unwrap bytes) of
-    Right (Row { rowIsDeleted = True }) -> Nothing
-    Right row -> Just row
-    Left e    -> error e -- FIXME(Sergei): return a proper failure?
+-- | A conduit, which decodes @Row@ values from bytes of fixed length.
+decoduit :: Monad m => Conduit S.ByteString m (Maybe Row)
+decoduit = CL.map f where
+  f !bytes = case decode (unwrap bytes) of
+      Right (Row { rowIsDeleted = True }) -> Nothing
+      Right row -> Just row
+      Left e    -> error e -- FIXME(Sergei): return a proper failure?
 
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do
