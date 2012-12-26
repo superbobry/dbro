@@ -136,7 +136,9 @@ instance Query DiskBackend where
         let fileName = S.intercalate "_" [tabName, indName, col]
         let colId = findIndex (\(n,_) -> n == col) tabSchema
         tree <- liftIO $ btreeOpen $ S.unpack fileName
-        selectAll table Nothing $$ CL.mapM_ (rowBtreeInsert tree $ fromJust colId)
+        selectAll table Nothing $$ CL.mapM_ $ \r -> do
+            let key = toIntegral $ (rowData r) !! (fromJust colId)
+            liftIO $ btreeAdd tree key $ fromJust (rowId r)
         liftIO $ btreeClose tree
 
         modifyTable tabName $ \_table ->
