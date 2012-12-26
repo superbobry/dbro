@@ -35,7 +35,8 @@ import Data.Bro.Monad (Bro)
 import Data.Bro.Types (TableName, IndexName, Table(..), Row(..), ColumnType(..),
                        Projection(..), Range, RowId, toIntegral)
 import Data.Bro.Condition (evalRange)
-import Data.BTree (BTree, BVal, btreeOpen, btreeClose, btreeFindRange, btreeAdd)
+import Data.BTree   (BTree, BVal, btreeOpen, btreeClose, btreeFindRange,
+                    btreeAdd, btreeEraseAll)
 
 data DiskBackend = DiskBackend { diskRoot   :: FilePath
                                , diskTables :: !(Map TableName Table)
@@ -113,6 +114,7 @@ instance Query DiskBackend where
             let colName = fst index
             let colId = findIndex (\(n,_) -> n == colName) schema
             rowBtreeInsert tree newRow $ fromJust colId
+            liftIO $ btreeClose tree
             keepIndex schema newRow index'
         keepIndex _schema _row [] = return ()
     insertInto _name _row = error "Inserting existing Row"
@@ -128,17 +130,30 @@ instance Query DiskBackend where
         return count
 
     delete name c = do
-        table@(Table { tabName, tabSize }) <- fetchTable name
+        table@(Table { tabName, tabSize, tabIndex, tabSchema }) <- fetchTable name
         diskRoot <- gets diskRoot
         h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
         count <- select name (Projection []) c $=
-                 CL.map (\r -> r { rowIsDeleted = True }) $$
+                 CL.map (\r -> r { rowIsDeleted = True }) $=
+                 CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
                  CL.foldM (\acc row -> rewriteRow h table row >> return (acc + 1)) 0
         modifyTable name $ \_table ->
             -- FIXME(Sergei): we assume the state doesn't change during
             -- 'delete' operation, since no concurency is involved.
             table { tabSize = tabSize - count }
         return $ fromIntegral count
+      where
+        --keepIndex :: Backend b => BTree -> TableSchema -> TableIndex ->
+        --                          Row -> Bro BackendError b Row
+        keepIndex schema row indexes = do
+            forM_ indexes $ \index -> do
+                tree <- liftIO $ btreeOpen $ S.unpack (snd index)
+                let colName = fst index
+                let colId = findIndex (\(n,_) -> n == colName) schema
+                let key = toIntegral $ (rowData row) !! (fromJust colId)
+                liftIO $ btreeEraseAll tree key
+                liftIO $ btreeClose tree
+                return ()
 
     createIndex tName indName colNames = do
         table@(Table { tabIndex, tabSchema }) <- fetchTable tName
@@ -168,8 +183,8 @@ instance Query DiskBackend where
 rowBtreeInsert :: (Backend b, Query b) => BTree -> Row -> Int ->
                                             Bro BackendError b ()
 rowBtreeInsert tree row colId = do
-        let val = toIntegral $ (rowData row) !! colId
-        liftIO $ btreeAdd tree val $ fromJust (rowId row)
+        let key = toIntegral $ (rowData row) !! colId
+        liftIO $ btreeAdd tree key $ fromJust (rowId row)
 
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
