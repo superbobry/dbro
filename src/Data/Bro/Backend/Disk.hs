@@ -8,7 +8,6 @@ module Data.Bro.Backend.Disk
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when, forM_)
-import Data.Int (Int32)
 import Data.List (findIndex)
 import Data.Map (Map)
 import Data.Maybe (fromJust, isJust)
@@ -91,32 +90,31 @@ instance Query DiskBackend where
         diskRoot <- lift $ gets diskRoot
         h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
         liftIO $ IO.hSetBuffering h NoBuffering
-        addCleanup (\_done -> liftIO $ IO.hClose h) $ case rowIds of
-            []    -> sourceChunks h (fromIntegral tabRowSize) $=
-                     CL.map decoduit $= CL.catMaybes
-            (_:_) -> CL.sourceList rowIds $= CL.mapM (readChunk h tabRowSize)
+        let source = case rowIds of
+                []    -> sourceChunks h (fromIntegral tabRowSize) (repeat 0)
+                (_:_) -> sourceChunks h (fromIntegral tabRowSize) rowIds
+        addCleanup (\_done -> liftIO (IO.hClose h)) $!
+            source $= CL.map decoduit $= CL.catMaybes
       where
-        sourceChunks :: MonadIO m => IO.Handle -> Int -> Source m S.ByteString
-        sourceChunks !h !n = do
-            bs <- liftIO (S.hGet h n)
+        sourceChunks :: MonadIO m
+                     => IO.Handle -> Int -> [RowId] -> Source m S.ByteString
+        sourceChunks _h _n [] = error "sourceChunks: missing row ids"
+        sourceChunks !h !n (rowId:rowIds) = do
+            bs <- liftIO $! do
+                  when (rowId /= 0) $ IO.hSeek h AbsoluteSeek offset
+                  S.hGet h n
             if S.null bs
-                then return ()
-                else yield bs >> sourceChunks h n
+               then return ()
+               else yield bs >> sourceChunks h n rowIds
+          where
+            offset :: Integer
+            offset = fromIntegral $ n * (fromIntegral rowId - 1)
 
         decoduit :: S.ByteString -> Maybe Row
-        decoduit bytes = case decode (unwrap bytes) of
+        decoduit !bytes = case decode (unwrap bytes) of
             Right (Row { rowIsDeleted = True }) -> Nothing
             Right row -> Just row
             Left e    -> error e -- FIXME(Sergei): return a proper failure?
-
-        readChunk :: Backend b => IO.Handle -> Int32 -> RowId -> Bro BackendError b Row
-        readChunk h tSize rId = do
-            let offset = tSize * (rId - 1)
-            liftIO $ IO.hSeek h AbsoluteSeek (fromIntegral offset)
-            bytes <- liftIO $ S.hGet h (fromIntegral tSize)
-            case decode (unwrap bytes) of
-                Right row   -> return row
-                Left e      -> error e
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize, tabIndex, tabSchema } <- fetchTable name
