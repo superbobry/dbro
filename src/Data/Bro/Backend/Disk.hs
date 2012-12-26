@@ -117,7 +117,7 @@ instance Query DiskBackend where
             tree <- liftIO $ btreeOpen $ S.unpack (snd index)
             let colName = fst index
             let colId = findIndex (\(n,_) -> n == colName) schema
-            rowBtreeInsert tree newRow $ fromJust colId
+            rowBtreeInsert tree (fromJust colId) newRow
             liftIO $ btreeClose tree
             keepIndex schema newRow index'
         keepIndex _schema _row [] = return ()
@@ -135,7 +135,7 @@ instance Query DiskBackend where
         table@(Table { tabName, tabSize, tabSchema, tabIndex }) <- fetchTable name
         count <- select name (Projection []) c $=
                  CL.map (\r -> r { rowIsDeleted = True }) $$
-                 --CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
+                 --CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$  <- ADD KEEPINDEX HERE
                  CL.foldM (\acc row -> do
                             h <- gets $ (! tabName) . diskHandles
                             rewriteRow h table row >> return (acc + 1)) 0
@@ -171,20 +171,17 @@ instance Query DiskBackend where
 
             let fileName = S.intercalate "_" [tName, indName, col]
             let colId = findIndex (\(n,_) -> n == col) tabSchema
-            fillBtree (S.unpack fileName) $ fromJust colId
+            tree <- liftIO $ btreeOpen $ S.unpack fileName
+            selectAll tName Nothing $$
+                CL.mapM_ (rowBtreeInsert tree $ fromJust colId)
+            liftIO $ btreeClose tree
 
             modifyTable tName $ \_table ->
                 table { tabIndex = (col, fileName):tabIndex }
-      where
-        fillBtree file colId = do
-            tree <- liftIO $ btreeOpen file
-            rows <- lazyConsume $ selectAll tName Nothing
-            mapM_ (\r -> rowBtreeInsert tree r colId) rows
-            liftIO $ btreeClose tree
 
-rowBtreeInsert :: (Backend b, Query b) => BTree -> Row -> Int ->
+rowBtreeInsert :: (Backend b, Query b) => BTree -> Int -> Row ->
                                             Bro BackendError b ()
-rowBtreeInsert tree row colId = do
+rowBtreeInsert tree colId row = do
         let key = toIntegral $ (rowData row) !! colId
         liftIO $ btreeAdd tree key $ fromJust (rowId row)
 
