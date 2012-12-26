@@ -123,13 +123,23 @@ instance Query DiskBackend where
                 Left e      -> error e
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
-        Table { tabCounter, tabRowSize } <- fetchTable name
+        Table { tabCounter, tabRowSize, tabIndex, tabSchema } <- fetchTable name
         diskRoot <- gets diskRoot
-        let bytes = wrap (fromIntegral tabRowSize) . encode $! row { rowId = Just tabCounter }
+        let newRow = row { rowId = Just tabCounter }
+        let bytes = wrap (fromIntegral tabRowSize) . encode $! newRow
         liftIO $! S.appendFile (diskRoot </> S.unpack name) bytes
+        keepIndex tabSchema newRow tabIndex
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
+      where
+        keepIndex schema newRow (index:index') = do
+            tree <- liftIO $ btreeOpen $ S.unpack (snd index)
+            let colName = fst index
+            let colId = findIndex (\(n,_) -> n == colName) schema
+            rowBtreeInsert tree newRow $ fromJust colId
+            keepIndex schema newRow index'
+        keepIndex _schema _row [] = return ()
     insertInto _name _row = error "Inserting existing Row"
 
     update name exprs c = do
@@ -169,24 +179,22 @@ instance Query DiskBackend where
 
             let fileName = S.intercalate "_" [tName, indName, col]
             let colId = findIndex (\(n,_) -> n == col) tabSchema
-            insertIntoBtree (S.unpack fileName) tName $ fromJust colId
+            fillBtree (S.unpack fileName) $ fromJust colId
+
             modifyTable tName $ \_table ->
                 table { tabIndex = (col, fileName):tabIndex }
-
-insertIntoBtree :: (Backend b, Query b) => FilePath -> TableName ->
-                                            Int -> Bro BackendError b ()
-insertIntoBtree file tName colId = do
-    tree <- liftIO $ btreeOpen file
-    rows <- lazyConsume $ selectAll tName Nothing
-    liftIO $ go tree rows
-    liftIO $ btreeClose tree
-    return ()
       where
-        go tree (row:rows) = do
-            let val = toIntegral $ (rowData row) !! colId
-            btreeAdd tree val $ fromJust (rowId row)
-            go tree rows
-        go _tree [] = return ()
+        fillBtree file colId = do
+            tree <- liftIO $ btreeOpen file
+            rows <- lazyConsume $ selectAll tName Nothing
+            mapM_ (\r -> rowBtreeInsert tree r colId) rows
+            liftIO $ btreeClose tree
+
+rowBtreeInsert :: (Backend b, Query b) => BTree -> Row -> Int ->
+                                            Bro BackendError b ()
+rowBtreeInsert tree row colId = do
+        let val = toIntegral $ (rowData row) !! colId
+        liftIO $ btreeAdd tree val $ fromJust (rowId row)
 
 rewriteRow :: MonadIO m => IO.Handle -> Table -> Row -> m ()
 rewriteRow h (Table { tabRowSize }) row
@@ -199,7 +207,7 @@ rewriteRow h (Table { tabRowSize }) row
                 S.hPut h bytes
         | otherwise = error "can't update row without row id"
 
--- TODO: return as source
+-- TODO: return as source (or not?)
 getRecFromIndex :: [(IndexName, Range)] -> IO [RowId]
 getRecFromIndex ((n, r):indexes) = do
     tree <- btreeOpen $ S.unpack n
