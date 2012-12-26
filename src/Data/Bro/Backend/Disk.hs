@@ -85,13 +85,16 @@ instance Query DiskBackend where
         let indexes = evalRange tabIndex cond
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
-        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
+        h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadWriteMode
         lift $ modify (\b@(DiskBackend { diskHandles }) ->
                         b { diskHandles = M.insert tabName h diskHandles })
         liftIO $ IO.hSetBuffering h NoBuffering
         let sourceRows = sourceChunks h
                          (fromIntegral tabRowSize)
-                         (rowIds <|> replicate (fromIntegral tabSize) 0)
+                         --Note(Misha): <|> behaves not as expected :(
+                         (if null rowIds
+                            then replicate (fromIntegral tabSize) 0
+                            else rowIds)
         addCleanup (\_done -> do
                          modify (\b@(DiskBackend { diskHandles }) ->
                                   b { diskHandles = M.delete tabName diskHandles })
@@ -131,8 +134,8 @@ instance Query DiskBackend where
     delete name c = do
         table@(Table { tabName, tabSize, tabSchema, tabIndex }) <- fetchTable name
         count <- select name (Projection []) c $=
-                 CL.map (\r -> r { rowIsDeleted = True }) $=
-                 CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
+                 CL.map (\r -> r { rowIsDeleted = True }) $$
+                 --CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
                  CL.foldM (\acc row -> do
                             h <- gets $ (! tabName) . diskHandles
                             rewriteRow h table row >> return (acc + 1)) 0
@@ -142,8 +145,8 @@ instance Query DiskBackend where
             table { tabSize = tabSize - count }
         return $ fromIntegral count
       where
-        --keepIndex :: Backend b => BTree -> TableSchema -> TableIndex ->
-        --                          Row -> Bro BackendError b Row
+        -- FIXME(Misha): we`ve got overhead of opening/closing btree here
+        -- good way should be iterate by indexes and then by rows
         keepIndex schema row indexes = do
             forM_ indexes $ \index -> do
                 tree <- liftIO $ btreeOpen $ S.unpack (snd index)

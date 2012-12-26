@@ -51,6 +51,8 @@ main = runBro_ (forever loop) =<< makeDiskBackend "." where
       Deleted n -> liftIO . putStrLn $ printf "OK %i" n
       Inserted rowId -> liftIO . putStrLn $ printf "OK %i" rowId
       Selected sourceRow ->
-          sourceRow $= CL.map f $$ sinkHandle IO.stdout
+          sourceRow $= CL.map f $= CL.map newLine $$ sinkHandle IO.stdout
         where
           f (Row { rowData }) = S.intercalate "," $ map (S.pack . show) rowData
+          --FIXME(Misha): O(n) complexity here
+          newLine l = l `S.append` (S.pack "\n")
