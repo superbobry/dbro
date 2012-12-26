@@ -132,8 +132,8 @@ instance Query DiskBackend where
       where
         -- FIXME(Misha): we`ve got overhead of opening/closing btree here
         -- good way should be iterate by indexes and then by rows
-        keepIndex schema row indexes = forM_ indexes $ \(colName, _dir) -> do
-            tree <- liftIO $ btreeOpen (S.unpack colName)
+        keepIndex schema row indexes = forM_ indexes $ \(colName, path) -> do
+            tree <- liftIO $ btreeOpen (S.unpack path)
             let colId = findIndex (\(n,_) -> n == colName) schema
             let key = toIntegral $ (rowData row) !! (fromJust colId)
             liftIO $ do
