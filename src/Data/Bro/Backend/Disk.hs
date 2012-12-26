@@ -93,7 +93,7 @@ instance Query DiskBackend where
         diskRoot <- lift $ gets diskRoot
         if null rIds
             then sourceFile (diskRoot </> S.unpack tabName) $=
-                slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
+                 slice (fromIntegral tabRowSize) $= CL.map decoduit $= CL.catMaybes
             else do
                 h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
                 addCleanup (\_done -> liftIO $ IO.hClose h) $ CL.sourceList rIds $=

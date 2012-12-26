@@ -2,14 +2,17 @@
 
 module Main where
 
-import Control.Monad (forever, unless, forM_)
+import Control.Monad (forever, unless)
 import Text.Printf (printf)
 import qualified System.IO as IO
 
 import Control.Monad.Error (throwError, catchError, strMsg)
 import Control.Monad.Trans (liftIO)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
+import Data.Conduit (($$), ($=))
+import Data.Conduit.Binary (sinkHandle)
 import qualified Data.ByteString.Char8 as S
+import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend (exec)
 import Data.Bro.Backend.Class (Backend(..), Query)
@@ -40,12 +43,14 @@ main = runBro_ (forever loop) =<< makeDiskBackend "." where
       -- FIXME(Sergei): descriptive error messages.
       putBSLnLn . S.pack . show
 
-  formatResult :: (Backend b, Query b) => BackendResult -> Bro BackendError b ()
+  formatResult :: (Backend b, Query b) => BackendResult b -> Bro BackendError b ()
   formatResult r = case r of
       Created   -> liftIO $ putStrLn "OK"
       CreatedIndex -> liftIO $ putStrLn "OK"
       Updated n -> liftIO . putStrLn $ printf "OK %i" n
       Deleted n -> liftIO . putStrLn $ printf "OK %i" n
       Inserted rowId -> liftIO . putStrLn $ printf "OK %i" rowId
-      Selected rows  -> forM_ rows $ \(Row { rowData }) ->
-          liftIO . S.putStrLn $ S.intercalate "," (map (S.pack . show) rowData)
+      Selected sourceRow ->
+          sourceRow $= CL.map f $$ sinkHandle IO.stdout
+        where
+          f (Row { rowData }) = S.intercalate "," $ map (S.pack . show) rowData

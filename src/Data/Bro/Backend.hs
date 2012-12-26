@@ -9,7 +9,6 @@ import qualified Data.ByteString.Char8 as S
 import qualified Data.Map as M
 
 import Control.Monad.Error (throwError)
-import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
 
 import Data.Bro.Backend.Class (Backend, Query(..), withTable)
@@ -21,12 +20,10 @@ import Data.Bro.Types (Table(..), TableSchema, Row(..),
                        Statement(..))
 import qualified Data.Bro.Backend.Class as Backend
 
-exec :: (Query b, Backend b) => Statement -> Bro BackendError b BackendResult
+exec :: (Query b, Backend b) => Statement -> Bro BackendError b (BackendResult b)
 exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
-    Select name p c -> do
-        rows <- lazyConsume $ Backend.select name p c
-        return $ Selected rows
+    Select name p c -> return $ Selected (Backend.select name p c)
     InsertInto name columns values -> withTable name $ \Table { tabSchema } -> do
         remapped <- case columns of
             []    -> return values

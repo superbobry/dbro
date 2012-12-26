@@ -3,13 +3,17 @@
 module Main where
 
 import Control.Applicative ((<$>))
-import Control.Monad ( replicateM_, void)
+import Control.Monad (replicateM_, void)
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as S
+import qualified System.IO as IO
 
 import Control.Monad.Trans (liftIO)
+import Data.Conduit (($$), ($=))
+import Data.Conduit.Binary (sinkHandle)
+import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Disk (DiskBackend, makeDiskBackend)
 import Data.Bro.Backend.Error (BackendError)
@@ -28,7 +32,7 @@ main = do
     runBro_ go =<< makeDiskBackend root
   where
     n :: Int
-    n = 10000
+    n = 200000
 
     root :: FilePath
     root = "check"
@@ -51,5 +55,5 @@ main = do
             size <- S.length <$> S.readFile (root </> S.unpack name)
             putStrLn $ printf "Table size: %i" size
         liftIO . putStrLn $ printf "Selecting %i values ..." n
-        Selected rows <-Backend.exec $ Select name (Projection []) Nothing
-        mapM_ (liftIO . print) rows
+        Selected sourceRow <- Backend.exec $ Select name (Projection []) Nothing
+        sourceRow $= CL.map (S.pack . show) $$ sinkHandle IO.stdout
