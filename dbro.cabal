@@ -27,7 +27,8 @@ executable check
   build-depends:    base
                   , bytestring == 0.10.*
                   , mtl == 2.1.*
-                  , temporary == 1.1.*
+                  , filepath == 1.3.*
+                  , directory == 1.2.*
                   , dbro
 
 
