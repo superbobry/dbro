@@ -81,7 +81,7 @@ instance Backend DiskBackend where
 
 instance Query DiskBackend where
     selectAll name cond = do
-        Table { tabName, tabRowSize, tabIndex, tabSize } <- lift $ fetchTable name
+        Table { tabName, tabRowSize, tabIndex, tabCounter } <- lift $ fetchTable name
         let indexes = evalRange tabIndex cond
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
@@ -93,7 +93,7 @@ instance Query DiskBackend where
                          (fromIntegral tabRowSize)
                          --Note(Misha): <|> behaves not as expected :(
                          (if null rowIds
-                            then replicate (fromIntegral tabSize) 0
+                            then replicate (fromIntegral $ tabCounter - 1) 0
                             else rowIds)
         addCleanup (\_done -> do
                          modify (\b@(DiskBackend { diskHandles }) ->
@@ -111,7 +111,7 @@ instance Query DiskBackend where
         keepIndex tabSchema newRow tabIndex
         modifyTable name $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
-        return $! tabCounter
+        return $! 1 -- "OK 1"
       where
         keepIndex schema newRow (index:index') = do
             tree <- liftIO $ btreeOpen $ S.unpack (snd index)
