@@ -23,18 +23,20 @@ import qualified Data.Bro.Backend.Class as Backend
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b (BackendResult b)
 exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
-    Select name p c -> return . Selected $! Backend.select name p c
-    InsertInto name columns values -> withTable name $ \Table { tabSchema } -> do
-        remapped <- case columns of
-            []    -> return values
-            (_:_) -> remap tabSchema $ zip columns values
-        Inserted <$> Backend.insertInto name (def { rowData = remapped })
-    Update name exprs cond -> withTable name $ \_table ->
-        Updated <$> Backend.update name exprs cond
-    Delete name cond -> withTable name $ \_table ->
-        Deleted <$> Backend.delete name cond
-    CreateIndex index name columns ->
-        Created <$ Backend.createIndex name index (map fst columns)
+    Select name p c -> withTable name $ \table ->
+        return . Selected $! Backend.select table p c
+    InsertInto name columns values ->
+        withTable name $ \table@(Table { tabSchema }) -> do
+            remapped <- case columns of
+                []    -> return values
+                (_:_) -> remap tabSchema $ zip columns values
+            Inserted <$> Backend.insertInto table (def { rowData = remapped })
+    Update name exprs cond -> withTable name $ \table ->
+        Updated <$> Backend.update table exprs cond
+    Delete name cond -> withTable name $ \table ->
+        Deleted <$> Backend.delete table cond
+    CreateIndex index name columns -> withTable name $ \table ->
+        Created <$ Backend.createIndex table index (map fst columns)
 
 remap :: Backend b
       => TableSchema

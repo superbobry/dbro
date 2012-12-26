@@ -36,20 +36,19 @@ class Backend b where
     deleteTable :: TableName -> Bro BackendError b ()
 
 class Backend b => Query b where
-    selectAll :: TableName -> Maybe Condition -> Source (Bro BackendError b) Row
+    selectAll :: Table -> Maybe Condition -> Source (Bro BackendError b) Row
 
-    select :: TableName -> Projection -> Maybe Condition -> Source (Bro BackendError b) Row
-    select name p c = do
-        table <- lift $ fetchTable name
-        selectAll name c $= projectRows table p $= filterRows table c
+    select :: Table -> Projection -> Maybe Condition -> Source (Bro BackendError b) Row
+    select table p c =
+        selectAll table c $= projectRows table p $= filterRows table c
 
-    insertInto :: TableName -> Row -> Bro BackendError b RowId
+    insertInto :: Table -> Row -> Bro BackendError b RowId
 
-    update :: TableName -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
+    update :: Table -> [(ColumnName, Expr)] -> Maybe Condition -> Bro BackendError b Int
 
-    delete :: TableName -> Maybe Condition -> Bro BackendError b Int
+    delete :: Table -> Maybe Condition -> Bro BackendError b Int
 
-    createIndex :: TableName -> IndexName -> [ColumnName] -> Bro BackendError b ()
+    createIndex :: Table -> IndexName -> [ColumnName] -> Bro BackendError b ()
 
 fetchTable :: Backend b => TableName -> Bro BackendError b Table
 fetchTable name = do

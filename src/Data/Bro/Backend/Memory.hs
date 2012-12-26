@@ -6,7 +6,6 @@ module Data.Bro.Backend.Memory
   ) where
 
 import Control.Applicative ((<$>))
-import Control.Monad (void)
 import Data.List (find)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
@@ -20,7 +19,7 @@ import Data.Default (def)
 import qualified Data.Conduit.List as CL
 
 import Data.Bro.Backend.Class (Backend(..), Query(..),
-                               withTable, fetchTable, updateRow)
+                               withTable, updateRow)
 import Data.Bro.Backend.Error (BackendError(..))
 import Data.Bro.Backend.Util (rowSize)
 import Data.Bro.Types (TableName, Table(..), Row(..), Projection(..))
@@ -54,40 +53,35 @@ instance Backend MemoryBackend where
             b { memTables = M.delete name memTables }
 
 instance Query MemoryBackend where
-    selectAll name _range = do
-        rows <- lift $ do
-            void $ fetchTable name
-            M.findWithDefault [] name <$> gets memData
+    selectAll (Table { tabName }) _range = do
+        rows <- lift $ M.findWithDefault [] tabName <$> gets memData
         CL.sourceList rows
 
-    insertInto name row@(Row { rowId = Nothing, .. }) = do
-        tabCounter <- withTable name (return . tabCounter)
+    insertInto (Table { tabName, tabCounter }) row@(Row { rowId = Nothing, .. }) = do
         modifyBackend $ \b@(MemoryBackend { .. }) ->
-            let rows = M.findWithDefault [] name memData
+            let rows = M.findWithDefault [] tabName memData
                 row' = row { rowId = Just tabCounter }
-            in b { memData = M.insert name (row':rows) memData }
-        modifyTable name $ \table@(Table { tabSize }) ->
+            in b { memData = M.insert tabName (row':rows) memData }
+        modifyTable tabName $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return $! tabCounter
-    insertInto _name _row = error "Inserting existing Row"
+    insertInto _table _row = error "Inserting existing Row"
 
-    update name exprs c = do
-        rows <- select name (Projection []) c $$ CL.consume
-        table <- fetchTable name
+    update table@(Table { tabName }) exprs c = do
+        rows <- select table (Projection []) c $$ CL.consume
         modifyBackend $ \b@(MemoryBackend { .. }) ->
             let rows' = map (updateRow table exprs) rows
-                oldrows = M.findWithDefault [] name memData
-            in b { memData = M.insert name (change oldrows rows') memData }
+                oldrows = M.findWithDefault [] tabName memData
+            in b { memData = M.insert tabName (change oldrows rows') memData }
         return $ length rows
       where
-        change (h:oldList) newList = 
+        change (h:oldList) newList =
             let nh = fromMaybe h $ find (\node -> (rowId node) == rowId h) newList
             in nh:(change oldList) newList
         change [] _ = []
 
-    delete _name _cond = undefined
-
-    createIndex _name _iname _cols = undefined
+    delete = undefined
+    createIndex = undefined
 
 makeMemoryBackend :: MemoryBackend
 makeMemoryBackend = MemoryBackend { memTables = M.empty, memData = M.empty }

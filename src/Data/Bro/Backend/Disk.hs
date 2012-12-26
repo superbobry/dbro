@@ -6,7 +6,7 @@ module Data.Bro.Backend.Disk
   , makeDiskBackend
   ) where
 
-import Control.Applicative ((<$>), (<|>))
+import Control.Applicative ((<$>))
 import Control.Monad (when, forM_)
 import Data.List (findIndex)
 import Data.Map (Map, (!))
@@ -79,8 +79,7 @@ instance Backend DiskBackend where
         liftIO $! removeFile (diskRoot </> S.unpack tabName)
 
 instance Query DiskBackend where
-    selectAll name cond = do
-        Table { .. } <- lift $ fetchTable name
+    selectAll (Table { .. }) cond = do
         let indexes = evalRange tabIndex cond
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
@@ -90,7 +89,6 @@ instance Query DiskBackend where
         liftIO $ IO.hSetBuffering h NoBuffering
         let sourceRows = sourceChunks h
                          (fromIntegral tabRowSize)
-                         -- Note(Misha): <|> behaves not as expected :(
                          (if null rowIds
                           then replicate (fromIntegral $ tabCounter - 1) 0
                           else rowIds)
@@ -100,14 +98,13 @@ instance Query DiskBackend where
                          liftIO $ IO.hClose h) $!
             sourceRows $= decoduit $= CL.catMaybes
 
-    insertInto name row@(Row { rowId = Nothing, .. }) = do
-        Table { tabCounter, tabRowSize, tabIndex, tabSchema } <- fetchTable name
+    insertInto (Table { .. }) row@(Row { rowId = Nothing, .. }) = do
         diskRoot <- gets diskRoot
         let newRow = row { rowId = Just tabCounter }
         let bytes = wrap (fromIntegral tabRowSize) . encode $! newRow
-        liftIO $! S.appendFile (diskRoot </> S.unpack name) bytes
+        liftIO $! S.appendFile (diskRoot </> S.unpack tabName) bytes
         keepIndex tabSchema newRow tabIndex
-        modifyTable name $ \table@(Table { tabSize }) ->
+        modifyTable tabName $ \table@(Table { tabSize }) ->
             table { tabCounter = tabCounter + 1, tabSize = tabSize + 1 }
         return tabCounter
       where
@@ -121,26 +118,21 @@ instance Query DiskBackend where
         keepIndex _schema _row [] = return ()
     insertInto _name _row = error "Inserting existing Row"
 
-    update name exprs c = do
-        table@(Table { tabName }) <- fetchTable name
-        select name (Projection []) c $=
+    update table@(Table { tabName }) exprs c =
+        select table (Projection []) c $=
             CL.map (updateRow table exprs) $$
             CL.foldM (\acc row -> do
                            h <- gets $ (! tabName) . diskHandles
                            rewriteRow h table row >> return (acc + 1)) 0
 
-    delete name c = do
-        table@(Table { .. }) <- fetchTable name
-        count <- select name (Projection []) c $=
+    delete table@(Table { .. }) c = do
+        count <- select table (Projection []) c $=
                  CL.map (\r -> r { rowIsDeleted = True }) $=
                  CL.mapM_ (\r -> keepIndex tabSchema r tabIndex) $$
                  CL.foldM (\acc row -> do
                             h <- gets $ (! tabName) . diskHandles
                             rewriteRow h table row >> return (acc + 1)) 0
-        modifyTable name $ \_table ->
-            -- FIXME(Sergei): we assume the state doesn't change during
-            -- 'delete' operation, since no concurency is involved.
-            table { tabSize = tabSize - count }
+        modifyTable tabName $ \table -> table { tabSize = tabSize - count }
         return $ fromIntegral count
       where
         -- FIXME(Misha): we`ve got overhead of opening/closing btree here
@@ -153,27 +145,24 @@ instance Query DiskBackend where
                 btreeEraseAll tree key
                 btreeClose tree
 
-    createIndex tName indName colNames = do
-        table@(Table { tabIndex, tabSchema }) <- fetchTable tName
-        forM_ colNames $ \col -> do
-            case lookup col tabSchema of
-                Nothing -> throwError ColumnDoesNotExist
-                Just t | t /= IntegerColumn ->
-                    throwError $ ColumnTypeUnsupported t
-                Just _t -> return ()
+    createIndex table@(Table { .. }) indName colNames = forM_ colNames $ \col -> do
+        case lookup col tabSchema of
+            Nothing -> throwError ColumnDoesNotExist
+            Just t | t /= IntegerColumn ->
+                throwError $ ColumnTypeUnsupported t
+            Just _t -> return ()
 
-            when (isJust $ lookup col tabIndex) $
-                throwError IndexAlreadyExists
+        when (isJust $ lookup col tabIndex) $
+            throwError IndexAlreadyExists
 
-            let fileName = S.intercalate "_" [tName, indName, col]
-            let colId = findIndex (\(n,_) -> n == col) tabSchema
-            tree <- liftIO $ btreeOpen $ S.unpack fileName
-            selectAll tName Nothing $$
-                CL.mapM_ (rowBtreeInsert tree $ fromJust colId)
-            liftIO $ btreeClose tree
+        let fileName = S.intercalate "_" [tabName, indName, col]
+        let colId = findIndex (\(n,_) -> n == col) tabSchema
+        tree <- liftIO $ btreeOpen $ S.unpack fileName
+        selectAll table Nothing $$ CL.mapM_ (rowBtreeInsert tree $ fromJust colId)
+        liftIO $ btreeClose tree
 
-            modifyTable tName $ \_table ->
-                table { tabIndex = (col, fileName):tabIndex }
+        modifyTable tabName $ \_table ->
+            table { tabIndex = (col, fileName):tabIndex }
 
 rowBtreeInsert :: (Backend b, Query b) => BTree -> Int -> Row ->
                                             Bro BackendError b ()
