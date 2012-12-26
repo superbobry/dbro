@@ -6,7 +6,7 @@ module Data.Bro.Backend.Disk
   , makeDiskBackend
   ) where
 
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>), (<*>), (<|>))
 import Control.Monad (when, forM_)
 import Data.List (findIndex)
 import Data.Map (Map)
@@ -22,7 +22,7 @@ import Control.Monad.Error (throwError)
 import Control.Monad.State (gets, modify)
 import Control.Monad.Trans (MonadIO, lift, liftIO)
 import Data.Serialize (Serialize, put, get, encode, decode)
-import Data.Conduit (Source, ($=), ($$), yield, addCleanup)
+import Data.Conduit (Source, ($=), ($$), addCleanup)
 import Data.Conduit.Lazy (lazyConsume)
 import Data.Default (def)
 import qualified Data.Conduit.List as CL
@@ -84,37 +84,18 @@ instance Backend DiskBackend where
 
 instance Query DiskBackend where
     selectAll name cond = do
-        Table { tabName, tabRowSize, tabIndex } <- lift $ fetchTable name
+        Table { tabName, tabRowSize, tabIndex, tabSize } <- lift $ fetchTable name
         let indexes = evalRange tabIndex cond
         rowIds   <- liftIO $ getRecFromIndex indexes
         diskRoot <- lift $ gets diskRoot
         h <- liftIO $ IO.openBinaryFile (diskRoot </> S.unpack tabName) ReadMode
         liftIO $ IO.hSetBuffering h NoBuffering
-        let source = case rowIds of
-                []    -> sourceChunks h (fromIntegral tabRowSize) (repeat 0)
-                (_:_) -> sourceChunks h (fromIntegral tabRowSize) rowIds
+        let sourceRows = sourceChunks h
+                         (fromIntegral tabRowSize)
+                         (rowIds <|> replicate (fromIntegral tabSize) 0)
         addCleanup (\_done -> liftIO (IO.hClose h)) $!
-            source $= CL.map decoduit $= CL.catMaybes
-      where
-        sourceChunks :: MonadIO m
-                     => IO.Handle -> Int -> [RowId] -> Source m S.ByteString
-        sourceChunks _h _n [] = error "sourceChunks: missing row ids"
-        sourceChunks !h !n (rowId:rowIds) = do
-            bs <- liftIO $! do
-                  when (rowId /= 0) $ IO.hSeek h AbsoluteSeek offset
-                  S.hGet h n
-            if S.null bs
-               then return ()
-               else yield bs >> sourceChunks h n rowIds
-          where
-            offset :: Integer
-            offset = fromIntegral $ n * (fromIntegral rowId - 1)
+            sourceRows $= CL.map decoduit $= CL.catMaybes
 
-        decoduit :: S.ByteString -> Maybe Row
-        decoduit !bytes = case decode (unwrap bytes) of
-            Right (Row { rowIsDeleted = True }) -> Nothing
-            Right row -> Just row
-            Left e    -> error e -- FIXME(Sergei): return a proper failure?
 
     insertInto name row@(Row { rowId = Nothing, .. }) = do
         Table { tabCounter, tabRowSize, tabIndex, tabSchema } <- fetchTable name
@@ -220,6 +201,21 @@ getRecFromIndex ((n, r):indexes) = do
           return $ res ++ res'
       getSeq _tree [] = return []
 getRecFromIndex [] = return []
+
+sourceChunks :: MonadIO m
+             => IO.Handle -> Int -> [RowId] -> Source m S.ByteString
+sourceChunks !h n rowIds = CL.sourceList rowIds $= CL.mapM f where
+  f rowId =
+      let offset = fromIntegral $ n * (fromIntegral rowId - 1) in
+      liftIO $! do
+          when (rowId /= 0) $! IO.hSeek h AbsoluteSeek offset
+          S.hGet h n
+
+decoduit :: S.ByteString -> Maybe Row
+decoduit !bytes = case decode (unwrap bytes) of
+    Right (Row { rowIsDeleted = True }) -> Nothing
+    Right row -> Just row
+    Left e    -> error e -- FIXME(Sergei): return a proper failure?
 
 makeDiskBackend :: FilePath -> IO DiskBackend
 makeDiskBackend root = do

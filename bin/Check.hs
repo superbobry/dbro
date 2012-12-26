@@ -2,11 +2,10 @@
 
 module Main where
 
-import Control.Applicative ((<$>))
 import Control.Monad (replicateM_, void, when)
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive,
                          doesDirectoryExist)
-import System.FilePath ((</>))
+import System.IO (BufferMode(NoBuffering))
 import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as S
 import qualified System.IO as IO
@@ -53,9 +52,7 @@ main = do
         void . Backend.exec $ CreateTable name schema
         replicateM_ n $ Backend.exec $ InsertInto name []
             [IntegerValue 42, DoubleValue 42.0, VarcharValue "foobar"]
-        liftIO $ do
-            size <- S.length <$> S.readFile (root </> S.unpack name)
-            putStrLn $ printf "Table size: %i" size
         liftIO . putStrLn $ printf "Selecting %i values ..." n
         Selected sourceRow <- Backend.exec $ Select name (Projection []) Nothing
+        liftIO $ IO.hSetBuffering IO.stdout NoBuffering
         sourceRow $= CL.map (S.pack . show) $$ sinkHandle IO.stdout

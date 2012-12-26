@@ -23,7 +23,7 @@ import qualified Data.Bro.Backend.Class as Backend
 exec :: (Query b, Backend b) => Statement -> Bro BackendError b (BackendResult b)
 exec s = case s of
     CreateTable name schema -> Created <$ Backend.insertTable name schema
-    Select name p c -> return $ Selected (Backend.select name p c)
+    Select name p c -> return . Selected $! Backend.select name p c
     InsertInto name columns values -> withTable name $ \Table { tabSchema } -> do
         remapped <- case columns of
             []    -> return values
