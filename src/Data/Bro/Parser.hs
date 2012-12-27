@@ -108,18 +108,23 @@ projection = as "projection" $! do
     return $ Projection exprs
 
 condition :: Parser Condition
-condition = as "condition" $! simplify <$> do
-    field <- columnName
-    choice [ token "=" *> (Equals field <$> expr)
-           , token "!=" *> (NotEquals field <$> expr)
-           , token ">" *> (GreaterThan field <$> expr)
-           , token "<" *> (LowerThan field <$> expr)
-           , token ">=" *> (GreaterThan `orEquals` field <$> expr)
-           , token "<=" *> (LowerThan `orEquals` field <$> expr)
-           , token "and" *> (And <$> condition <*> condition)
-           , token "or" *> (Or <$> condition <*> condition)
-           ]
+condition = as "condition" $! simplify <$> (compound <|> basic)
   where
+    basic = do
+        field <- columnName
+        choice [ token "=" *> (Equals field <$> expr)
+               , token "!=" *> (NotEquals field <$> expr)
+               , token ">=" *> (GreaterThan `orEquals` field <$> expr)
+               , token "<=" *> (LowerThan `orEquals` field <$> expr)
+               , token ">" *> (GreaterThan field <$> expr)
+               , token "<" *> (LowerThan field <$> expr)
+               ]
+    compound = do
+        c1 <- basic
+        op <- choice [token "or" *> pure Or, token "and" *> pure And]
+        c2 <- condition
+        return $! op c1 c2
+
     orEquals :: (ColumnName -> Expr -> Condition) -> ColumnName -> Expr -> Condition
     orEquals con field expr0 = con field expr0 `Or` Equals field expr0
 
