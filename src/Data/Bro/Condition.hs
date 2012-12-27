@@ -4,8 +4,8 @@ module Data.Bro.Condition
   ) where
 
 import Data.Bro.Expr (evalExpr)
-import Data.Bro.Types   (Expr(..), Condition(..), ColumnName, ColumnValue(..), 
-                        TableIndex, IndexName, Range, RangeValue(..),)
+import Data.Bro.Types   (Expr(..), Condition(..), ColumnName, ColumnValue(..),
+                        TableIndex, IndexName, Range, RangeValue(..), ElemRange)
 
 evalCondition :: [(ColumnName, ColumnValue)] -> Condition -> Bool
 evalCondition ctx c = case c of
@@ -25,7 +25,13 @@ rangeOr :: Range -> Range -> Range
 rangeOr range1 range2 = range1 ++ range2 -- Note(Pavel): Need some optimisatios here.
 
 rangeAnd :: Range -> Range -> Range
-rangeAnd range1 range2 = range1 ++ range2 -- Note(Pavel): Not good. Need to be fixed.
+rangeAnd range1 range2 = [foldr elemAnd (MinusInf, PlusInf) (range1 ++ range2)]
+
+elemAnd :: ElemRange -> ElemRange -> ElemRange
+elemAnd (v1l, v1r) (v2l, v2r) = if nl <= nr then (nl, nr) else (MinusInf, MinusInf)
+                                  where
+                                    nl = max v1l v2l
+                                    nr = min v1r v2r
 
 cv2rv :: ColumnValue -> RangeValue
 cv2rv (IntegerValue i) = NumericRange i

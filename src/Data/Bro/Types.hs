@@ -17,6 +17,7 @@ module Data.Bro.Types
   , Direction(..)
   , Statement(..)
   , Range
+  , ElemRange
   , RangeValue(..)
   , isIntegral
   , toIntegral
@@ -153,7 +154,15 @@ data Statement = CreateTable TableName TableSchema
 
 data RangeValue = NumericRange Int32 | MinusInf | PlusInf deriving (Eq, Show)
 
-type Range = [(RangeValue, RangeValue)]
+instance Ord RangeValue where
+    (<=) (NumericRange r1) (NumericRange r2) = r1 <= r2
+    (<=) MinusInf (NumericRange _) = True
+    (<=) (NumericRange _) PlusInf = True
+    (<=) MinusInf PlusInf = True
+    (<=) _ _ = False
+
+type ElemRange = (RangeValue, RangeValue)
+type Range = [ElemRange]
 
 isIntegral :: ColumnType -> Bool
 isIntegral IntegerColumn = True
