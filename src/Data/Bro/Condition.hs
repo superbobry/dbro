@@ -23,7 +23,7 @@ evalCondition ctx c = case c of
 
 evalRange :: TableIndex -> Maybe Condition -> [(IndexName, Range)]
 evalRange [] _cond = []
-evalRange index (Just condition) = [ (snd (head index), f (fst (head index)) condition) ]
+evalRange index (Just condition) = map ( \(n, p) -> (p, f n condition) ) index
   where
     f :: ColumnName -> Condition -> Range
     f name cond = case cond of

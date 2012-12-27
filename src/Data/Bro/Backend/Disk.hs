@@ -105,10 +105,14 @@ instance Query DiskBackend where
         return tabCounter
     insertInto _name _row = error "Inserting existing Row"
 
-    update table@(Table { tabName }) exprs c =
+    update table@(Table { tabName, tabSchema, tabIndex }) exprs c =
         select table (Projection []) c $=
+            CL.mapM (\r -> do
+                withBtree tabSchema tabIndex r $ \t k _v -> btreeEraseAll t k 
+                return r) $=
             CL.map (updateRow table exprs) $$
             CL.foldM (\acc row -> do
+                           withBtree tabSchema tabIndex row btreeAdd
                            h <- gets $ (! tabName) . diskHandles
                            rewriteRow h table row >> return (acc + 1)) 0
 
@@ -165,10 +169,7 @@ getRecFromIndex ((n, r):indexes) = do
     where
       getSeq :: BTree -> Range -> IO [BVal]
       getSeq tree ((rl, rr):ranges) = do
-          --print $ rangeToVal rl
-          --print $ rangeToVal rr
           res <- btreeFindRange tree (rangeToVal rl) (rangeToVal rr)
-          --print res
           res' <- getSeq tree ranges
           return $ res ++ res'
       getSeq _tree [] = return []
